@@ -1,0 +1,19 @@
+# Build outputs
+bin/
+obj/
+
+# .NET secrets & config
+appsettings.Development.json
+*.user
+
+# Docker
+.env
+
+# VS/Rider
+.vs/
+.idea/
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
