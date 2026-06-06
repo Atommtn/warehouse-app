@@ -1,0 +1,54 @@
+@using WarehouseApp.Services
+@inject AuthService Auth
+
+<div class="login-wrapper">
+    <div class="login-card">
+        <div class="login-logo">
+            <span class="logo-icon">🏭</span>
+            <h1>انبارداری هوشمند</h1>
+            <p>سیستم مدیریت مواد اولیه</p>
+        </div>
+
+        <div class="login-form">
+            @if (!string.IsNullOrEmpty(errorMsg))
+            {
+                <div class="alert alert-error">@errorMsg</div>
+            }
+            <div class="form-group">
+                <label>نام کاربری</label>
+                <input @bind="username" @bind:event="oninput" class="form-input" placeholder="نام کاربری" />
+            </div>
+            <div class="form-group">
+                <label>رمز عبور</label>
+                <input @bind="password" @bind:event="oninput" type="password" class="form-input" placeholder="رمز عبور" 
+                       @onkeydown="HandleKeyDown" />
+            </div>
+            <button class="btn btn-primary btn-full @(loading ? "loading" : "")" @onclick="DoLogin" disabled="@loading">
+                @(loading ? "در حال ورود..." : "ورود به سیستم")
+            </button>
+        </div>
+
+        <div class="login-hint">
+            <small>ادمین: admin / admin123 | اپراتور: operator / op123</small>
+        </div>
+    </div>
+</div>
+
+@code {
+    string username = "", password = "", errorMsg = "";
+    bool loading = false;
+
+    async Task DoLogin()
+    {
+        loading = true; errorMsg = "";
+        StateHasChanged();
+        var ok = await Auth.LoginAsync(username, password);
+        if (!ok) errorMsg = "نام کاربری یا رمز عبور اشتباه است";
+        loading = false;
+    }
+
+    async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await DoLogin();
+    }
+}

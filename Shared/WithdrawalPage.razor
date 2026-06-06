@@ -1,0 +1,158 @@
+@using WarehouseApp.Services
+@using WarehouseApp.Models
+@inject WarehouseService Warehouse
+@inject AuthService Auth
+
+<div class="page-header"><h2>⬇️ خروج مواد از انبار</h2></div>
+
+@if (Auth.CurrentUser?.Role == UserRole.Attendant)
+{
+    <div class="info-banner">⚠️ درخواست شما برای تایید به مدیر انبار ارسال می‌شود</div>
+}
+
+<div class="form-card">
+    <div class="form-grid">
+        <div class="form-group">
+            <label>ماده اولیه *</label>
+            <select value="@selId" @onchange="OnMaterialChange" class="form-input">
+                <option value="0">انتخاب کنید...</option>
+                @foreach (var m in materials) { <option value="@m.Id">[@m.Code] @m.Name — @m.CurrentStock @m.Unit</option> }
+            </select>
+            @if (sel!=null) { <small class="form-hint">موجودی: @sel.CurrentStock @sel.Unit</small> }
+        </div>
+        <div class="form-group">
+            <label>مقدار *</label>
+            <input @bind="qty" type="number" step="0.01" class="form-input" />
+        </div>
+        <div class="form-group">
+            <label>تاریخ خروج *</label>
+            <input @bind="wDate" type="date" class="form-input" />
+        </div>
+        <div class="form-group">
+            <label>دلیل خروج</label>
+            <input @bind="reason" class="form-input" placeholder="مثال: مصرف در تولید" />
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(ok))  { <div class="alert alert-success">@ok</div> }
+    @if (!string.IsNullOrEmpty(err)) { <div class="alert alert-error">@err</div> }
+    <div class="form-actions">
+        <button class="btn btn-primary" @onclick="Submit">
+            @(Auth.CurrentUser?.Role == UserRole.Attendant ? "📤 ارسال درخواست" : "✅ ثبت خروج")
+        </button>
+        <button class="btn btn-secondary" @onclick="Reset">پاک کردن</button>
+    </div>
+</div>
+
+<!-- پنل تایید برای مدیر -->
+@if (Auth.CanApprove && pendingList.Any())
+{
+    <div class="section-title orange-title">⏳ درخواست‌های در انتظار تایید (@pendingList.Count)</div>
+    @foreach (var w in pendingList)
+    {
+        <div class="approval-card">
+            <div class="approval-info">
+                <strong>[@w.Material?.Code] @w.Material?.Name</strong>
+                <span>@w.Quantity @w.Material?.Unit</span>
+                <span>متصدی: @w.CreatedByUsername</span>
+                <span>@w.Reason</span>
+                <span class="approval-date">@w.CreatedAt.ToString("yyyy/MM/dd HH:mm")</span>
+            </div>
+            <div class="approval-actions">
+                <button class="btn btn-success btn-sm" @onclick="()=>Approve(w.Id)">✅ تایید</button>
+                <button class="btn btn-danger btn-sm" @onclick="()=>ShowReject(w.Id)">❌ رد</button>
+            </div>
+        </div>
+        @if (rejectingId == w.Id)
+        {
+            <div class="reject-form">
+                <input @bind="rejectReason" class="form-input" placeholder="دلیل رد..." />
+                <button class="btn btn-danger btn-sm" @onclick="()=>DoReject(w.Id)">ثبت رد</button>
+                <button class="btn btn-secondary btn-sm" @onclick="()=>rejectingId=null">انصراف</button>
+            </div>
+        }
+    }
+}
+
+<div class="section-title">آخرین خروجی‌ها</div>
+<div class="table-responsive">
+    <table class="data-table">
+        <thead><tr><th>کد</th><th>ماده</th><th>مقدار</th><th>تاریخ</th><th>کاربر</th><th>وضعیت</th></tr></thead>
+        <tbody>
+            @foreach (var w in withdrawals)
+            {
+                <tr>
+                    <td><code>@w.Material?.Code</code></td>
+                    <td>@w.Material?.Name</td>
+                    <td>@w.Quantity.ToString("N2") @w.Material?.Unit</td>
+                    <td>@w.WithdrawalDate.ToString("yyyy/MM/dd")</td>
+                    <td>@w.CreatedByUsername</td>
+                    <td>
+                        @if (w.Status == WithdrawalStatus.Pending)   { <span class="status-badge warning">در انتظار</span> }
+                        else if (w.Status == WithdrawalStatus.Approved) { <span class="status-badge ok">تایید شد</span> }
+                        else { <span class="status-badge danger">رد شد</span> }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    List<Material> materials=new(); List<StockWithdrawal> withdrawals=new(), pendingList=new();
+    Material? sel; int selId=0; decimal qty=0; string reason="",ok="",err="";
+    DateTime wDate=DateTime.Today; int? rejectingId; string rejectReason="";
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    async Task Load()
+    {
+        materials = await Warehouse.GetMaterialsAsync();
+        withdrawals = await Warehouse.GetWithdrawalsAsync();
+        if (Auth.CanApprove) pendingList = await Warehouse.GetPendingWithdrawalsAsync();
+    }
+
+    void OnMaterialChange(ChangeEventArgs e)
+    {
+        selId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        sel = materials.FirstOrDefault(m => m.Id == selId);
+    }
+
+    async Task Submit()
+    {
+        ok=""; err="";
+        if (selId==0) { err="ماده را انتخاب کنید"; return; }
+        if (qty<=0)   { err="مقدار باید بیشتر از صفر باشد"; return; }
+        try
+        {
+            var isAttendant = Auth.CurrentUser?.Role == UserRole.Attendant;
+            var status = isAttendant ? WithdrawalStatus.Pending : WithdrawalStatus.Approved;
+            await Warehouse.AddWithdrawalAsync(new StockWithdrawal
+            {
+                MaterialId=selId, Quantity=qty, WithdrawalDate=wDate, Reason=reason,
+                CreatedByUserId=Auth.CurrentUser!.Id, CreatedByUsername=Auth.CurrentUser.Username,
+                Status=status,
+                ApprovedByUsername = isAttendant ? null : Auth.CurrentUser.Username,
+                ApprovedAt = isAttendant ? null : DateTime.UtcNow
+            });
+            ok = isAttendant
+                ? $"📤 درخواست برداشت {qty} {sel?.Unit} از {sel?.Name} ارسال شد — منتظر تایید مدیر"
+                : $"✅ {qty} {sel?.Unit} از [{sel?.Code}] {sel?.Name} ثبت شد";
+            await Load(); Reset();
+        }
+        catch (Exception ex) { err = $"❌ {ex.Message}"; }
+    }
+
+    async Task Approve(int id)
+    {
+        await Warehouse.ApproveWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username);
+        await Load();
+    }
+    void ShowReject(int id) { rejectingId=id; rejectReason=""; }
+    async Task DoReject(int id)
+    {
+        await Warehouse.RejectWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username, rejectReason);
+        rejectingId=null; await Load();
+    }
+
+    void Reset() { selId=0; qty=0; sel=null; wDate=DateTime.Today; reason=""; }
+}

@@ -1,0 +1,18 @@
+@using WarehouseApp.Services
+@inject AuthService Auth
+
+@if (!Auth.IsAuthenticated)
+{
+    <LoginPage />
+}
+else
+{
+    <MainLayout />
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        Auth.OnAuthChanged += StateHasChanged;
+    }
+}

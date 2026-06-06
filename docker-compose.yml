@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  warehouse:
+    build: .
+    container_name: warehouse-app
+    ports:
+      - "9095:9095"
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://0.0.0.0:9095
+      - ConnectionStrings__DefaultConnection=Server=sql2019,1433;Database=WarehouseDB;User Id=sa;Password=Mohammad1111;TrustServerCertificate=True;
+    networks:
+      - shared-network
+
+networks:
+  shared-network:
+    external: true

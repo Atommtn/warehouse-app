@@ -1,0 +1,100 @@
+@using WarehouseApp.Services
+@using WarehouseApp.Models
+@inject WarehouseService Warehouse
+@inject AuthService Auth
+
+<div class="page-header">
+    <h2>🏢 تأمین‌کنندگان</h2>
+    @if (Auth.IsManager) { <button class="btn btn-primary" @onclick="ShowAdd">+ تأمین‌کننده جدید</button> }
+</div>
+
+@if (showForm && Auth.IsManager)
+{
+    <div class="form-card">
+        <h3>@(editId.HasValue ? "ویرایش" : "تأمین‌کننده جدید")</h3>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>نام شرکت *</label>
+                <input @bind="fName" class="form-input" />
+            </div>
+            <div class="form-group">
+                <label>نام نماینده</label>
+                <input @bind="fContact" class="form-input" />
+            </div>
+            <div class="form-group">
+                <label>تلفن</label>
+                <input @bind="fPhone" class="form-input" />
+            </div>
+            <div class="form-group">
+                <label>ایمیل</label>
+                <input @bind="fEmail" class="form-input" />
+            </div>
+            <div class="form-group">
+                <label>آدرس</label>
+                <input @bind="fAddress" class="form-input" />
+            </div>
+            <div class="form-group">
+                <label>توضیحات</label>
+                <input @bind="fNotes" class="form-input" />
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(err)) { <div class="alert alert-error">@err</div> }
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="Save">💾 ذخیره</button>
+            <button class="btn btn-secondary" @onclick="()=>showForm=false">انصراف</button>
+        </div>
+    </div>
+}
+
+<div class="materials-table-wrapper">
+    <table class="data-table">
+        <thead>
+            <tr><th>نام شرکت</th><th>نماینده</th><th>تلفن</th><th>ایمیل</th><th>آدرس</th>
+            @if (Auth.IsManager) { <th>عملیات</th> }</tr>
+        </thead>
+        <tbody>
+            @foreach (var s in suppliers)
+            {
+                <tr>
+                    <td><strong>@s.Name</strong></td>
+                    <td>@s.ContactPerson</td>
+                    <td>@s.Phone</td>
+                    <td>@s.Email</td>
+                    <td>@s.Address</td>
+                    @if (Auth.IsManager)
+                    {
+                        <td>
+                            <button class="btn-icon" @onclick="()=>Edit(s)">✏️</button>
+                            <button class="btn-icon delete" @onclick="()=>Delete(s.Id)">🗑️</button>
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    List<Supplier> suppliers = new();
+    bool showForm; int? editId;
+    string fName="", fContact="", fPhone="", fEmail="", fAddress="", fNotes="", err="";
+
+    protected override async Task OnInitializedAsync() => suppliers = await Warehouse.GetSuppliersAsync();
+
+    void ShowAdd() { editId=null; fName=fContact=fPhone=fEmail=fAddress=fNotes=err=""; showForm=true; }
+    void Edit(Supplier s) { editId=s.Id; fName=s.Name; fContact=s.ContactPerson; fPhone=s.Phone; fEmail=s.Email; fAddress=s.Address; fNotes=s.Notes; err=""; showForm=true; }
+
+    async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(fName)) { err="نام شرکت اجباری است"; return; }
+        if (editId.HasValue)
+        {
+            var s = await Warehouse.GetSupplierAsync(editId.Value);
+            if (s != null) { s.Name=fName; s.ContactPerson=fContact; s.Phone=fPhone; s.Email=fEmail; s.Address=fAddress; s.Notes=fNotes; await Warehouse.UpdateSupplierAsync(s); }
+        }
+        else await Warehouse.AddSupplierAsync(new Supplier { Name=fName, ContactPerson=fContact, Phone=fPhone, Email=fEmail, Address=fAddress, Notes=fNotes });
+        showForm=false; suppliers=await Warehouse.GetSuppliersAsync();
+    }
+
+    async Task Delete(int id) { await Warehouse.DeleteSupplierAsync(id); suppliers=await Warehouse.GetSuppliersAsync(); }
+}

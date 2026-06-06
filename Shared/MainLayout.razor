@@ -1,0 +1,105 @@
+@using WarehouseApp.Services
+@inject AuthService Auth
+@inject WarehouseService Warehouse
+
+<div class="app-shell">
+    <!-- Mobile Header -->
+    <div class="mobile-header">
+        <button class="hamburger" @onclick="ToggleSidebar">☰</button>
+        <span class="mobile-title">🏭 انبارداری</span>
+        @if (pendingCount > 0 && Auth.CanApprove)
+        { <span class="mobile-badge">@pendingCount</span> }
+    </div>
+
+    <!-- Overlay -->
+    @if (sidebarOpen)
+    { <div class="sidebar-overlay" @onclick="ToggleSidebar"></div> }
+
+    <nav class="sidebar @(sidebarOpen ? "open" : "")">
+        <div class="sidebar-header">
+            <span class="logo-icon">🏭</span>
+            <div>
+                <div class="app-name">انبارداری هوشمند</div>
+                <div class="user-badge role-@Auth.CurrentUser?.Role.ToString().ToLower()">
+                    @RoleLabel(Auth.CurrentUser?.Role) — @Auth.CurrentUser?.FullName
+                </div>
+            </div>
+        </div>
+
+        <ul class="nav-menu">
+            <li class="@A("dashboard")"><button @onclick='()=>Go("dashboard")'>📊 داشبورد</button></li>
+            <li class="@A("materials")"><button @onclick='()=>Go("materials")'>📦 مواد اولیه</button></li>
+            <li class="@A("suppliers")"><button @onclick='()=>Go("suppliers")'>🏢 تأمین‌کنندگان</button></li>
+            @if (Auth.IsManager)
+            {
+                <li class="@A("entry")"><button @onclick='()=>Go("entry")'>⬆️ ورود به انبار</button></li>
+            }
+            @if (Auth.IsAttendant)
+            {
+                <li class="@A("withdrawal")">
+                    <button @onclick='()=>Go("withdrawal")'>
+                        ⬇️ خروج از انبار
+                        @if (pendingCount > 0 && Auth.CanApprove) { <span class="badge">@pendingCount</span> }
+                    </button>
+                </li>
+            }
+            <li class="@A("history")"><button @onclick='()=>Go("history")'>📋 تاریخچه</button></li>
+            <li class="@A("alerts")">
+                <button @onclick='()=>Go("alerts")'>
+                    🔔 هشدارها
+                    @if (alertCount > 0) { <span class="badge">@alertCount</span> }
+                </button>
+            </li>
+            @if (Auth.IsAdmin)
+            {
+                <li class="nav-divider"></li>
+                <li class="@A("users")"><button @onclick='()=>Go("users")'>👥 مدیریت کاربران</button></li>
+            }
+        </ul>
+
+        <div class="sidebar-footer">
+            <button class="btn-logout" @onclick="Auth.Logout">خروج 🚪</button>
+        </div>
+    </nav>
+
+    <main class="main-content" @onclick="CloseSidebar">
+        @if (page == "dashboard")                         { <DashboardPage /> }
+        else if (page == "materials")                     { <MaterialsPage /> }
+        else if (page == "suppliers")                     { <SuppliersPage /> }
+        else if (page == "entry"       && Auth.IsManager) { <StockEntryPage /> }
+        else if (page == "withdrawal"  && Auth.IsAttendant){ <WithdrawalPage /> }
+        else if (page == "history")                       { <HistoryPage /> }
+        else if (page == "alerts")                        { <AlertsPage /> }
+        else if (page == "users"       && Auth.IsAdmin)   { <UsersPage /> }
+    </main>
+</div>
+
+@code {
+    string page = "dashboard";
+    int alertCount, pendingCount;
+    bool sidebarOpen = false;
+
+    protected override async Task OnInitializedAsync() => await LoadCounts();
+
+    async Task LoadCounts()
+    {
+        var stats = await Warehouse.GetDashboardStatsAsync();
+        alertCount = stats.alertCount;
+        pendingCount = stats.pendingCount;
+    }
+
+    void Go(string p) { page = p; sidebarOpen = false; }
+    string A(string p) => page == p ? "active" : "";
+    void ToggleSidebar() => sidebarOpen = !sidebarOpen;
+    void CloseSidebar() { if (sidebarOpen) sidebarOpen = false; }
+
+    string RoleLabel(UserRole? r) => r switch
+    {
+        UserRole.Admin     => "مدیر ارشد",
+        UserRole.Manager   => "مدیر انبار",
+        UserRole.Operator  => "اپراتور",
+        UserRole.Attendant => "متصدی",
+        UserRole.Viewer    => "بازبین",
+        _ => ""
+    };
+}

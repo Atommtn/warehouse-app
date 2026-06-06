@@ -1,0 +1,82 @@
+@using WarehouseApp.Services
+@using WarehouseApp.Models
+@inject WarehouseService Warehouse
+
+<div class="page-header">
+    <h2>🔔 هشدارهای انبار</h2>
+    <button class="btn btn-secondary" @onclick="Reload">🔄</button>
+</div>
+
+<div class="search-bar">
+    <input value="@search" @oninput="OnSearch" class="form-input search-input" placeholder="🔍 جستجو بر اساس نام یا کد..." />
+</div>
+
+@if (loaded)
+{
+    @if (!alerts.Any())
+    {
+        <div class="empty-state"><span class="empty-icon">✅</span><p>هیچ هشداری وجود ندارد.</p></div>
+    }
+    else
+    {
+        <div class="alerts-summary">
+            <span class="badge-count red">@lowStock.Count موجودی کم</span>
+            <span class="badge-count orange">@expiring.Count در آستانه انقضا</span>
+            <span class="badge-count gray">@expired.Count منقضی شده</span>
+        </div>
+
+        @if (lowStock.Any())
+        {
+            <div class="section-title red-title">📉 نیاز به خرید</div>
+            @foreach (var a in lowStock)
+            {
+                <div class="alert-card danger">
+                    <div class="alert-header"><strong>[@a.MaterialCode] @a.MaterialName</strong><span class="status-badge danger">خرید</span></div>
+                    <p>@a.Message</p>
+                    <div class="alert-detail">موجودی: <strong>@a.CurrentStock @a.Unit</strong> | حد: <strong>@a.MinStockLevel @a.Unit</strong></div>
+                </div>
+            }
+        }
+        @if (expiring.Any())
+        {
+            <div class="section-title orange-title">⏰ در آستانه انقضا</div>
+            @foreach (var a in expiring)
+            {
+                <div class="alert-card warning">
+                    <div class="alert-header"><strong>[@a.MaterialCode] @a.MaterialName</strong><span class="status-badge warning">انقضا</span></div>
+                    <p>@a.Message</p>
+                    <div class="alert-detail">انقضا: <strong>@a.ExpiryDate?.ToString("yyyy/MM/dd")</strong></div>
+                </div>
+            }
+        }
+        @if (expired.Any())
+        {
+            <div class="section-title gray-title">❌ منقضی شده</div>
+            @foreach (var a in expired)
+            {
+                <div class="alert-card expired">
+                    <div class="alert-header"><strong>[@a.MaterialCode] @a.MaterialName</strong><span class="status-badge danger">منقضی</span></div>
+                    <p>@a.Message</p>
+                </div>
+            }
+        }
+    }
+}
+
+@code {
+    bool loaded; string search="";
+    List<StockAlert> alerts=new(),lowStock=new(),expiring=new(),expired=new();
+
+    protected override async Task OnInitializedAsync() => await LoadAlerts();
+    async Task Reload() { loaded=false; await LoadAlerts(); }
+    async Task OnSearch(ChangeEventArgs e) { search=e.Value?.ToString()??""; await LoadAlerts(); }
+
+    async Task LoadAlerts()
+    {
+        alerts=await Warehouse.GetAlertsAsync(search);
+        lowStock=alerts.Where(a=>a.Type==AlertType.LowStock).ToList();
+        expiring=alerts.Where(a=>a.Type==AlertType.Expiring).ToList();
+        expired=alerts.Where(a=>a.Type==AlertType.Expired).ToList();
+        loaded=true;
+    }
+}

@@ -1,0 +1,123 @@
+@using WarehouseApp.Services
+@using WarehouseApp.Models
+@inject WarehouseService Warehouse
+@inject AuthService Auth
+
+<div class="page-header">
+    <h2>📦 مواد اولیه</h2>
+    @if (Auth.IsManager) { <button class="btn btn-primary" @onclick="ShowAdd">+ ماده جدید</button> }
+</div>
+
+<div class="search-bar">
+    <input value="@search" @oninput="OnSearch" class="form-input search-input" placeholder="🔍 جستجو بر اساس نام یا کد..." />
+</div>
+
+@if (showForm && Auth.IsManager)
+{
+    <div class="form-card">
+        <h3>@(editId.HasValue ? "ویرایش ماده" : "ماده جدید")</h3>
+        <div class="form-grid">
+            <div class="form-group"><label>کد ماده *</label><input @bind="fCode" class="form-input" placeholder="MAT-004" /></div>
+            <div class="form-group"><label>نام ماده *</label><input @bind="fName" class="form-input" /></div>
+            <div class="form-group">
+                <label>واحد *</label>
+                <select @bind="fUnit" class="form-input">
+                    <option>کیلوگرم</option><option>لیتر</option><option>عدد</option>
+                    <option>بسته</option><option>متر</option><option>گرم</option>
+                </select>
+            </div>
+            @if (Auth.CanViewPrice)
+            {
+                <div class="form-group"><label>قیمت واحد (ریال)</label><input @bind="fPrice" type="number" class="form-input" /></div>
+            }
+            <div class="form-group"><label>حد هشدار</label><input @bind="fMinStock" type="number" step="0.01" class="form-input" /></div>
+            <div class="form-group">
+                <label>تأمین‌کننده</label>
+                <select @bind="fSupplierId" class="form-input">
+                    <option value="">انتخاب کنید...</option>
+                    @foreach (var s in suppliers) { <option value="@s.Id">@s.Name</option> }
+                </select>
+            </div>
+            <div class="form-group"><label>توضیحات</label><input @bind="fNotes" class="form-input" /></div>
+        </div>
+        @if (!string.IsNullOrEmpty(err)) { <div class="alert alert-error">@err</div> }
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="Save">💾 ذخیره</button>
+            <button class="btn btn-secondary" @onclick="()=>showForm=false">انصراف</button>
+        </div>
+    </div>
+}
+
+<div class="table-responsive">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>کد</th><th>نام</th><th>واحد</th><th>موجودی</th><th>هشدار</th>
+                @if (Auth.CanViewPrice) { <th>قیمت</th> }
+                <th>تأمین‌کننده</th><th>وضعیت</th>
+                @if (Auth.IsManager) { <th></th> }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var m in materials)
+            {
+                <tr class="@(m.CurrentStock<=m.MinStockLevel?"row-warning":"")">
+                    <td><code>@m.Code</code></td>
+                    <td><strong>@m.Name</strong></td>
+                    <td>@m.Unit</td>
+                    <td>@m.CurrentStock.ToString("N2")</td>
+                    <td>@m.MinStockLevel.ToString("N2")</td>
+                    @if (Auth.CanViewPrice) { <td>@m.PricePerUnit.ToString("N0") ﷼</td> }
+                    <td>@(m.Supplier?.Name??"-")</td>
+                    <td>
+                        @if (m.CurrentStock<=m.MinStockLevel) { <span class="status-badge danger">خرید</span> }
+                        else if (m.CurrentStock<=m.MinStockLevel*1.5m) { <span class="status-badge warning">کم</span> }
+                        else { <span class="status-badge ok">✓</span> }
+                    </td>
+                    @if (Auth.IsManager)
+                    {
+                        <td>
+                            <button class="btn-icon" @onclick="()=>Edit(m)">✏️</button>
+                            <button class="btn-icon" @onclick="()=>Delete(m.Id)">🗑️</button>
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    List<Material> materials=new(); List<Supplier> suppliers=new();
+    bool showForm; int? editId; string search="";
+    string fCode="",fName="",fUnit="کیلوگرم",fNotes="",err="";
+    decimal fPrice=0,fMinStock=0; int? fSupplierId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        materials=await Warehouse.GetMaterialsAsync();
+        suppliers=await Warehouse.GetSuppliersAsync();
+    }
+
+    async Task OnSearch(ChangeEventArgs e) { search=e.Value?.ToString()??""; materials=await Warehouse.GetMaterialsAsync(search); }
+
+    void ShowAdd() { editId=null; fCode=fName=fNotes=err=""; fUnit="کیلوگرم"; fPrice=fMinStock=0; fSupplierId=null; showForm=true; }
+    void Edit(Material m) { editId=m.Id; fCode=m.Code; fName=m.Name; fUnit=m.Unit; fPrice=m.PricePerUnit; fMinStock=m.MinStockLevel; fSupplierId=m.SupplierId; fNotes=m.Notes; err=""; showForm=true; }
+
+    async Task Save()
+    {
+        err="";
+        if (string.IsNullOrWhiteSpace(fCode)) { err="کد ماده اجباری است"; return; }
+        if (string.IsNullOrWhiteSpace(fName)) { err="نام ماده اجباری است"; return; }
+        if (await Warehouse.CodeExistsAsync(fCode, editId)) { err=$"کد {fCode} قبلاً ثبت شده"; return; }
+        if (editId.HasValue)
+        {
+            var m=await Warehouse.GetMaterialAsync(editId.Value);
+            if (m!=null) { m.Code=fCode; m.Name=fName; m.Unit=fUnit; m.PricePerUnit=fPrice; m.MinStockLevel=fMinStock; m.SupplierId=fSupplierId; m.Notes=fNotes; await Warehouse.UpdateMaterialAsync(m); }
+        }
+        else await Warehouse.AddMaterialAsync(new Material { Code=fCode, Name=fName, Unit=fUnit, PricePerUnit=fPrice, MinStockLevel=fMinStock, SupplierId=fSupplierId, Notes=fNotes });
+        showForm=false; materials=await Warehouse.GetMaterialsAsync(search);
+    }
+
+    async Task Delete(int id) { await Warehouse.DeleteMaterialAsync(id); materials=await Warehouse.GetMaterialsAsync(search); }
+}

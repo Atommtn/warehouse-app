@@ -1,0 +1,19 @@
+@page "/"
+@namespace WarehouseApp.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@{ Layout = null; }
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>سیستم مدیریت انبار</title>
+    <base href="~/" />
+    <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+    <component type="typeof(WarehouseApp.App)" render-mode="ServerPrerendered" />
+    <script src="_framework/blazor.server.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,171 @@
+@using WarehouseApp.Services
+@using WarehouseApp.Models
+@inject WarehouseService Warehouse
+@inject AuthService Auth
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <h2>📊 داشبورد انبار</h2>
+    <div class="header-actions">
+        <span class="date-badge">@DateTime.Now.ToString("yyyy/MM/dd")</span>
+        @if (Auth.IsManager)
+        { <button class="btn btn-success btn-sm" @onclick="ExportAll">📥 اکسل</button> }
+    </div>
+</div>
+
+@if (loaded)
+{
+    <div class="stats-grid">
+        <div class="stat-card blue">
+            <div class="stat-icon">📦</div>
+            <div class="stat-info"><div class="stat-value">@totalMaterials</div><div class="stat-label">نوع ماده اولیه</div></div>
+        </div>
+        @if (Auth.IsAdmin)
+        {
+            <div class="stat-card green">
+                <div class="stat-icon">💰</div>
+                <div class="stat-info"><div class="stat-value">@totalValue.ToString("N0") ﷼</div><div class="stat-label">ارزش کل موجودی</div></div>
+            </div>
+        }
+        <div class="stat-card @(lowStockCount>0?"red":"green")">
+            <div class="stat-icon">⚠️</div>
+            <div class="stat-info"><div class="stat-value">@lowStockCount</div><div class="stat-label">نیازمند خرید</div></div>
+        </div>
+        <div class="stat-card orange">
+            <div class="stat-icon">🔔</div>
+            <div class="stat-info"><div class="stat-value">@alertCount</div><div class="stat-label">هشدار فعال</div></div>
+        </div>
+        @if (Auth.CanApprove && pendingCount > 0)
+        {
+            <div class="stat-card red">
+                <div class="stat-icon">⏳</div>
+                <div class="stat-info"><div class="stat-value">@pendingCount</div><div class="stat-label">در انتظار تایید</div></div>
+            </div>
+        }
+    </div>
+
+    @if (Auth.CanApprove && pendingWithdrawals.Any())
+    {
+        <div class="section-title orange-title">⏳ درخواست‌های خروج در انتظار تایید</div>
+        @foreach (var w in pendingWithdrawals)
+        {
+            <div class="approval-card">
+                <div class="approval-info">
+                    <strong>[@w.Material?.Code] @w.Material?.Name</strong>
+                    <span>مقدار: @w.Quantity @w.Material?.Unit</span>
+                    <span>متصدی: @w.CreatedByUsername</span>
+                    <span>دلیل: @w.Reason</span>
+                    <span class="approval-date">@w.CreatedAt.ToString("yyyy/MM/dd HH:mm")</span>
+                </div>
+                <div class="approval-actions">
+                    <button class="btn btn-success btn-sm" @onclick="()=>Approve(w.Id)">✅ تایید</button>
+                    <button class="btn btn-danger btn-sm" @onclick="()=>ShowReject(w.Id)">❌ رد</button>
+                </div>
+            </div>
+            @if (rejectingId == w.Id)
+            {
+                <div class="reject-form">
+                    <input @bind="rejectReason" class="form-input" placeholder="دلیل رد درخواست..." />
+                    <button class="btn btn-danger btn-sm" @onclick="()=>Reject(w.Id)">ثبت رد</button>
+                    <button class="btn btn-secondary btn-sm" @onclick="()=>rejectingId=null">انصراف</button>
+                </div>
+            }
+        }
+    }
+
+    @if (alerts.Any())
+    {
+        <div class="section-title">⚠️ هشدارهای اخیر</div>
+        <div class="alerts-preview">
+            @foreach (var a in alerts.Take(4))
+            {
+                <div class="alert-item @a.Type.ToString().ToLower()">
+                    <span>@(a.Type==AlertType.LowStock?"📉":a.Type==AlertType.Expiring?"⏰":"❌")</span>
+                    <span>[@a.MaterialCode] @a.Message</span>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="section-title">موجودی مواد اولیه</div>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>کد</th><th>نام</th><th>موجودی</th>
+                    @if (Auth.CanViewPrice) { <th>قیمت</th> }
+                    <th>وضعیت</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var m in materials)
+                {
+                    <tr class="@(m.CurrentStock<=m.MinStockLevel?"row-warning":"")">
+                        <td><code>@m.Code</code></td>
+                        <td><strong>@m.Name</strong><br/><small class="text-muted">@m.Unit</small></td>
+                        <td>@m.CurrentStock.ToString("N2")</td>
+                        @if (Auth.CanViewPrice) { <td>@m.PricePerUnit.ToString("N0") ﷼</td> }
+                        <td>
+                            @if (m.CurrentStock<=m.MinStockLevel) { <span class="status-badge danger">خرید</span> }
+                            else if (m.CurrentStock<=m.MinStockLevel*1.5m) { <span class="status-badge warning">کم</span> }
+                            else { <span class="status-badge ok">✓</span> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    bool loaded;
+    List<Material> materials=new(); List<StockAlert> alerts=new();
+    List<StockWithdrawal> pendingWithdrawals=new();
+    decimal totalValue; int totalMaterials,lowStockCount,alertCount,pendingCount;
+    int? rejectingId; string rejectReason="";
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    async Task Load()
+    {
+        materials = await Warehouse.GetMaterialsAsync();
+        alerts = await Warehouse.GetAlertsAsync();
+        var s = await Warehouse.GetDashboardStatsAsync();
+        (totalValue, totalMaterials, lowStockCount, alertCount, pendingCount) = s;
+        if (Auth.CanApprove)
+            pendingWithdrawals = await Warehouse.GetPendingWithdrawalsAsync();
+        loaded = true;
+    }
+
+    async Task Approve(int id)
+    {
+        await Warehouse.ApproveWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username);
+        await Load();
+    }
+
+    void ShowReject(int id) { rejectingId = id; rejectReason = ""; }
+
+    async Task Reject(int id)
+    {
+        await Warehouse.RejectWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username, rejectReason);
+        rejectingId = null;
+        await Load();
+    }
+
+    async Task ExportAll()
+    {
+        var (mats,entries,withdrawals,als) = await Warehouse.GetExportDataAsync();
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("=== مواد اولیه ===");
+        csv.AppendLine("کد,نام,واحد,موجودی,حد هشدار,قیمت,تأمین‌کننده");
+        foreach (var m in mats) csv.AppendLine($"{m.Code},{m.Name},{m.Unit},{m.CurrentStock},{m.MinStockLevel},{m.PricePerUnit},{m.Supplier?.Name}");
+        csv.AppendLine("\n=== ورودی‌ها ===");
+        csv.AppendLine("کد,ماده,مقدار,واحد,قیمت,تاریخ ورود,تاریخ انقضا,ثبت‌کننده");
+        foreach (var e in entries) csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.Quantity},{e.Material?.Unit},{e.PricePerUnit},{e.EntryDate:yyyy/MM/dd},{e.ExpiryDate:yyyy/MM/dd},{e.CreatedByUsername}");
+        csv.AppendLine("\n=== خروجی‌ها ===");
+        csv.AppendLine("کد,ماده,مقدار,واحد,تاریخ,کاربر,وضعیت,تایید‌کننده");
+        foreach (var w in withdrawals) csv.AppendLine($"{w.Material?.Code},{w.Material?.Name},{w.Quantity},{w.Material?.Unit},{w.WithdrawalDate:yyyy/MM/dd},{w.CreatedByUsername},{w.Status},{w.ApprovedByUsername}");
+        var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+        await JS.InvokeVoidAsync("downloadFile", Convert.ToBase64String(bytes), "warehouse-report.csv");
+    }
+}

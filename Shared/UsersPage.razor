@@ -1,0 +1,115 @@
+@using WarehouseApp.Services
+@using WarehouseApp.Models
+@inject WarehouseService Warehouse
+@inject AuthService Auth
+
+<div class="page-header">
+    <h2>👥 مدیریت کاربران</h2>
+    <button class="btn btn-primary" @onclick="ShowAdd">+ کاربر جدید</button>
+</div>
+
+@if (showForm)
+{
+    <div class="form-card">
+        <h3>@(editId.HasValue ? "ویرایش کاربر" : "کاربر جدید")</h3>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>نام کاربری *</label>
+                <input @bind="fUsername" class="form-input" />
+            </div>
+            <div class="form-group">
+                <label>نام کامل *</label>
+                <input @bind="fFullName" class="form-input" />
+            </div>
+            <div class="form-group">
+                <label>رمز عبور @(editId.HasValue ? "(خالی = بدون تغییر)" : "*")</label>
+                <input @bind="fPassword" type="password" class="form-input" />
+            </div>
+            <div class="form-group">
+                <label>نقش *</label>
+                <select @bind="fRole" class="form-input">
+                    <option value="@UserRole.Admin">مدیر ارشد</option>
+                    <option value="@UserRole.Manager">مدیر انبار</option>
+                    <option value="@UserRole.Operator">اپراتور</option>
+                    <option value="@UserRole.Viewer">بازبین</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>وضعیت</label>
+                <select @bind="fIsActive" class="form-input">
+                    <option value="true">فعال</option>
+                    <option value="false">غیرفعال</option>
+                </select>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(err)) { <div class="alert alert-error">@err</div> }
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="Save">💾 ذخیره</button>
+            <button class="btn btn-secondary" @onclick="()=>showForm=false">انصراف</button>
+        </div>
+    </div>
+}
+
+<div class="materials-table-wrapper">
+    <table class="data-table">
+        <thead>
+            <tr><th>نام کاربری</th><th>نام کامل</th><th>نقش</th><th>وضعیت</th><th>تاریخ ایجاد</th><th>عملیات</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var u in users)
+            {
+                <tr>
+                    <td><strong>@u.Username</strong></td>
+                    <td>@u.FullName</td>
+                    <td><span class="role-badge role-@u.Role.ToString().ToLower()">@RoleLabel(u.Role)</span></td>
+                    <td><span class="status-badge @(u.IsActive?"ok":"danger")">@(u.IsActive?"فعال":"غیرفعال")</span></td>
+                    <td>@u.CreatedAt.ToString("yyyy/MM/dd")</td>
+                    <td>
+                        @if (u.Id != Auth.CurrentUser?.Id)
+                        {
+                            <button class="btn-icon" @onclick="()=>Edit(u)">✏️</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    List<User> users = new();
+    bool showForm; int? editId;
+    string fUsername="", fFullName="", fPassword="", err="";
+    UserRole fRole = UserRole.Operator;
+    bool fIsActive = true;
+
+    protected override async Task OnInitializedAsync() => users = await Warehouse.GetUsersAsync();
+
+    void ShowAdd() { editId=null; fUsername=""; fFullName=""; fPassword=""; fRole=UserRole.Operator; fIsActive=true; err=""; showForm=true; }
+    void Edit(User u) { editId=u.Id; fUsername=u.Username; fFullName=u.FullName; fPassword=""; fRole=u.Role; fIsActive=u.IsActive; err=""; showForm=true; }
+
+    async Task Save()
+    {
+        err = "";
+        if (string.IsNullOrWhiteSpace(fUsername)) { err="نام کاربری اجباری است"; return; }
+        if (string.IsNullOrWhiteSpace(fFullName)) { err="نام کامل اجباری است"; return; }
+        if (!editId.HasValue && string.IsNullOrWhiteSpace(fPassword)) { err="رمز عبور اجباری است"; return; }
+        if (await Warehouse.UsernameExistsAsync(fUsername, editId)) { err="این نام کاربری قبلاً ثبت شده"; return; }
+
+        if (editId.HasValue)
+        {
+            var u = users.First(x => x.Id == editId.Value);
+            u.Username=fUsername; u.FullName=fFullName; u.Role=fRole; u.IsActive=fIsActive;
+            if (!string.IsNullOrWhiteSpace(fPassword)) u.PasswordHash = BCrypt.Net.BCrypt.HashPassword(fPassword);
+            await Warehouse.UpdateUserAsync(u);
+        }
+        else
+        {
+            await Warehouse.AddUserAsync(new User { Username=fUsername, FullName=fFullName, PasswordHash=BCrypt.Net.BCrypt.HashPassword(fPassword), Role=fRole, IsActive=fIsActive });
+        }
+        showForm = false;
+        users = await Warehouse.GetUsersAsync();
+    }
+
+    string RoleLabel(UserRole r) => r switch { UserRole.Admin=>"مدیر ارشد", UserRole.Manager=>"مدیر انبار", UserRole.Operator=>"اپراتور", _=>"بازبین" };
+}

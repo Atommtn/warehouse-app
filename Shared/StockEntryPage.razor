@@ -1,0 +1,90 @@
+@using WarehouseApp.Services
+@using WarehouseApp.Models
+@inject WarehouseService Warehouse
+@inject AuthService Auth
+
+<div class="page-header"><h2>⬆️ ورود مواد به انبار</h2></div>
+
+<div class="form-card">
+    <div class="form-grid">
+        <div class="form-group">
+            <label>ماده اولیه *</label>
+            <select @bind="selId" class="form-input">
+                <option value="0">انتخاب کنید...</option>
+                @foreach (var m in materials) { <option value="@m.Id">[@m.Code] @m.Name (@m.Unit)</option> }
+            </select>
+        </div>
+        <div class="form-group">
+            <label>مقدار *</label>
+            <input @bind="qty" type="number" step="0.01" class="form-input" />
+        </div>
+        <div class="form-group">
+            <label>قیمت واحد (ریال) *</label>
+            <input @bind="price" type="number" class="form-input" />
+        </div>
+        <div class="form-group">
+            <label>تاریخ ورود *</label>
+            <input @bind="entryDate" type="date" class="form-input" />
+        </div>
+        <div class="form-group">
+            <label>تاریخ انقضا *</label>
+            <input @bind="expiryDate" type="date" class="form-input" />
+        </div>
+        <div class="form-group">
+            <label>توضیحات</label>
+            <input @bind="notes" class="form-input" />
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(ok)) { <div class="alert alert-success">@ok</div> }
+    @if (!string.IsNullOrEmpty(err)) { <div class="alert alert-error">@err</div> }
+    <div class="form-actions">
+        <button class="btn btn-primary" @onclick="Submit">✅ ثبت ورودی</button>
+        <button class="btn btn-secondary" @onclick="Reset">پاک کردن</button>
+    </div>
+</div>
+
+@if (entries.Any())
+{
+    <div class="section-title">آخرین ورودی‌ها</div>
+    <div class="materials-table-wrapper">
+        <table class="data-table">
+            <thead><tr><th>کد</th><th>ماده</th><th>مقدار</th><th>قیمت</th><th>ورود</th><th>انقضا</th><th>ثبت‌کننده</th></tr></thead>
+            <tbody>
+                @foreach (var e in entries)
+                {
+                    <tr class="@(e.ExpiryDate<DateTime.Now?"row-warning":"")">
+                        <td><code>@e.Material?.Code</code></td>
+                        <td>@e.Material?.Name</td>
+                        <td>@e.Quantity.ToString("N2") @e.Material?.Unit</td>
+                        <td>@e.PricePerUnit.ToString("N0") ﷼</td>
+                        <td>@e.EntryDate.ToString("yyyy/MM/dd")</td>
+                        <td class="@(e.ExpiryDate<DateTime.Now?"expired":"")">@e.ExpiryDate.ToString("yyyy/MM/dd")</td>
+                        <td>@e.CreatedByUsername</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    List<Material> materials=new(); List<StockEntry> entries=new();
+    int selId=0; decimal qty=0,price=0; string notes="",ok="",err="";
+    DateTime entryDate=DateTime.Today, expiryDate=DateTime.Today.AddMonths(6);
+
+    protected override async Task OnInitializedAsync() { materials=await Warehouse.GetMaterialsAsync(); entries=await Warehouse.GetEntriesAsync(); }
+
+    async Task Submit()
+    {
+        ok=""; err="";
+        if (selId==0){err="ماده را انتخاب کنید";return;}
+        if (qty<=0){err="مقدار باید بیشتر از صفر باشد";return;}
+        if (price<=0){err="قیمت باید بیشتر از صفر باشد";return;}
+        await Warehouse.AddStockEntryAsync(new StockEntry { MaterialId=selId, Quantity=qty, PricePerUnit=price, EntryDate=entryDate, ExpiryDate=expiryDate, Notes=notes, CreatedByUserId=Auth.CurrentUser!.Id, CreatedByUsername=Auth.CurrentUser.Username });
+        var m=materials.FirstOrDefault(x=>x.Id==selId);
+        ok=$"✅ {qty} {m?.Unit} از [{m?.Code}] {m?.Name} ثبت شد";
+        materials=await Warehouse.GetMaterialsAsync(); entries=await Warehouse.GetEntriesAsync(); Reset();
+    }
+
+    void Reset() { selId=0; qty=0; price=0; entryDate=DateTime.Today; expiryDate=DateTime.Today.AddMonths(6); notes=""; }
+}
