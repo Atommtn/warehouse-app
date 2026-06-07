@@ -7,9 +7,8 @@
 <div class="page-header">
     <h2>📊 داشبورد انبار</h2>
     <div class="header-actions">
-        <span class="date-badge">@DateTime.Now.ToString("yyyy/MM/dd")</span>
-        @if (Auth.IsManager)
-        { <button class="btn btn-success btn-sm" @onclick="ExportAll">📥 اکسل</button> }
+        <span class="date-badge">@DateTime.Now.ToShamsiWithTime()</span>
+        @if (Auth.IsManager) { <button class="btn btn-success btn-sm" @onclick="ExportAll">📥 اکسل</button> }
     </div>
 </div>
 
@@ -55,11 +54,11 @@
                     <span>مقدار: @w.Quantity @w.Material?.Unit</span>
                     <span>متصدی: @w.CreatedByUsername</span>
                     <span>دلیل: @w.Reason</span>
-                    <span class="approval-date">@w.CreatedAt.ToString("yyyy/MM/dd HH:mm")</span>
+                    <span class="approval-date">@w.CreatedAt.ToShamsiWithTime()</span>
                 </div>
                 <div class="approval-actions">
                     <button class="btn btn-success btn-sm" @onclick="()=>Approve(w.Id)">✅ تایید</button>
-                    <button class="btn btn-danger btn-sm" @onclick="()=>ShowReject(w.Id)">❌ رد</button>
+                    <button class="btn btn-danger btn-sm"  @onclick="()=>ShowReject(w.Id)">❌ رد</button>
                 </div>
             </div>
             @if (rejectingId == w.Id)
@@ -91,11 +90,9 @@
     <div class="table-responsive">
         <table class="data-table">
             <thead>
-                <tr>
-                    <th>کد</th><th>نام</th><th>موجودی</th>
-                    @if (Auth.CanViewPrice) { <th>قیمت</th> }
-                    <th>وضعیت</th>
-                </tr>
+                <tr><th>کد</th><th>نام</th><th>موجودی</th>
+                @if (Auth.CanViewPrice) { <th>قیمت</th> }
+                <th>وضعیت</th></tr>
             </thead>
             <tbody>
                 @foreach (var m in materials)
@@ -106,9 +103,9 @@
                         <td>@m.CurrentStock.ToString("N2")</td>
                         @if (Auth.CanViewPrice) { <td>@m.PricePerUnit.ToString("N0") ﷼</td> }
                         <td>
-                            @if (m.CurrentStock<=m.MinStockLevel) { <span class="status-badge danger">خرید</span> }
+                            @if (m.CurrentStock<=m.MinStockLevel)          { <span class="status-badge danger">خرید</span> }
                             else if (m.CurrentStock<=m.MinStockLevel*1.5m) { <span class="status-badge warning">کم</span> }
-                            else { <span class="status-badge ok">✓</span> }
+                            else                                            { <span class="status-badge ok">✓</span> }
                         </td>
                     </tr>
                 }
@@ -131,26 +128,14 @@
         materials = await Warehouse.GetMaterialsAsync();
         alerts = await Warehouse.GetAlertsAsync();
         var s = await Warehouse.GetDashboardStatsAsync();
-        (totalValue, totalMaterials, lowStockCount, alertCount, pendingCount) = s;
-        if (Auth.CanApprove)
-            pendingWithdrawals = await Warehouse.GetPendingWithdrawalsAsync();
+        (totalValue,totalMaterials,lowStockCount,alertCount,pendingCount) = s;
+        if (Auth.CanApprove) pendingWithdrawals = await Warehouse.GetPendingWithdrawalsAsync();
         loaded = true;
     }
 
-    async Task Approve(int id)
-    {
-        await Warehouse.ApproveWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username);
-        await Load();
-    }
-
-    void ShowReject(int id) { rejectingId = id; rejectReason = ""; }
-
-    async Task Reject(int id)
-    {
-        await Warehouse.RejectWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username, rejectReason);
-        rejectingId = null;
-        await Load();
-    }
+    async Task Approve(int id) { await Warehouse.ApproveWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username); await Load(); }
+    void ShowReject(int id) { rejectingId=id; rejectReason=""; }
+    async Task Reject(int id) { await Warehouse.RejectWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username, rejectReason); rejectingId=null; await Load(); }
 
     async Task ExportAll()
     {
@@ -161,11 +146,12 @@
         foreach (var m in mats) csv.AppendLine($"{m.Code},{m.Name},{m.Unit},{m.CurrentStock},{m.MinStockLevel},{m.PricePerUnit},{m.Supplier?.Name}");
         csv.AppendLine("\n=== ورودی‌ها ===");
         csv.AppendLine("کد,ماده,مقدار,واحد,قیمت,تاریخ ورود,تاریخ انقضا,ثبت‌کننده");
-        foreach (var e in entries) csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.Quantity},{e.Material?.Unit},{e.PricePerUnit},{e.EntryDate:yyyy/MM/dd},{e.ExpiryDate:yyyy/MM/dd},{e.CreatedByUsername}");
+        foreach (var e in entries) csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.Quantity},{e.Material?.Unit},{e.PricePerUnit},{e.EntryDate.ToShamsi()},{e.ExpiryDate.ToShamsi()},{e.CreatedByUsername}");
         csv.AppendLine("\n=== خروجی‌ها ===");
         csv.AppendLine("کد,ماده,مقدار,واحد,تاریخ,کاربر,وضعیت,تایید‌کننده");
-        foreach (var w in withdrawals) csv.AppendLine($"{w.Material?.Code},{w.Material?.Name},{w.Quantity},{w.Material?.Unit},{w.WithdrawalDate:yyyy/MM/dd},{w.CreatedByUsername},{w.Status},{w.ApprovedByUsername}");
-        var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+        foreach (var w in withdrawals) csv.AppendLine($"{w.Material?.Code},{w.Material?.Name},{w.Quantity},{w.Material?.Unit},{w.WithdrawalDate.ToShamsi()},{w.CreatedByUsername},{w.Status},{w.ApprovedByUsername}");
+        var bytes = System.Text.Encoding.UTF8.GetPreamble()
+            .Concat(System.Text.Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
         await JS.InvokeVoidAsync("downloadFile", Convert.ToBase64String(bytes), "warehouse-report.csv");
     }
 }

@@ -22,7 +22,11 @@
 {
     <div class="table-responsive">
         <table class="data-table">
-            <thead><tr><th>کد</th><th>ماده</th><th>مقدار</th>@if(Auth.CanViewPrice){<th>قیمت</th>}<th>ورود</th><th>انقضا</th><th>ثبت‌کننده</th></tr></thead>
+            <thead>
+                <tr><th>کد</th><th>ماده</th><th>مقدار</th>
+                @if (Auth.CanViewPrice) { <th>قیمت</th> }
+                <th>تاریخ ورود</th><th>تاریخ انقضا</th><th>ثبت‌کننده</th></tr>
+            </thead>
             <tbody>
                 @foreach (var e in entries)
                 {
@@ -31,8 +35,10 @@
                         <td>@e.Material?.Name</td>
                         <td>@e.Quantity.ToString("N2") @e.Material?.Unit</td>
                         @if (Auth.CanViewPrice) { <td>@e.PricePerUnit.ToString("N0") ﷼</td> }
-                        <td>@e.EntryDate.ToString("yyyy/MM/dd")</td>
-                        <td class="@(e.ExpiryDate<DateTime.Now?"expired":"")">@e.ExpiryDate.ToString("yyyy/MM/dd")</td>
+                        <td>@e.EntryDate.ToShamsi()</td>
+                        <td class="@(e.ExpiryDate<DateTime.Now?"expired":e.ExpiryDate<DateTime.Now.AddDays(7)?"expiring":"")">
+                            @e.ExpiryDate.ToShamsi()
+                        </td>
                         <td>@e.CreatedByUsername</td>
                     </tr>
                 }
@@ -44,7 +50,7 @@ else
 {
     <div class="table-responsive">
         <table class="data-table">
-            <thead><tr><th>کد</th><th>ماده</th><th>مقدار</th><th>تاریخ</th><th>کاربر</th><th>وضعیت</th><th>تایید‌کننده</th><th>دلیل</th></tr></thead>
+            <thead><tr><th>کد</th><th>ماده</th><th>مقدار</th><th>تاریخ خروج</th><th>کاربر</th><th>وضعیت</th><th>تایید‌کننده</th></tr></thead>
             <tbody>
                 @foreach (var w in withdrawals)
                 {
@@ -52,15 +58,14 @@ else
                         <td><code>@w.Material?.Code</code></td>
                         <td>@w.Material?.Name</td>
                         <td>@w.Quantity.ToString("N2") @w.Material?.Unit</td>
-                        <td>@w.WithdrawalDate.ToString("yyyy/MM/dd")</td>
+                        <td>@w.WithdrawalDate.ToShamsi()</td>
                         <td>@w.CreatedByUsername</td>
                         <td>
-                            @if (w.Status==WithdrawalStatus.Pending)  { <span class="status-badge warning">در انتظار</span> }
+                            @if (w.Status==WithdrawalStatus.Pending)    { <span class="status-badge warning">در انتظار</span> }
                             else if (w.Status==WithdrawalStatus.Approved) { <span class="status-badge ok">تایید</span> }
-                            else { <span class="status-badge danger">رد شد: @w.RejectReason</span> }
+                            else { <span class="status-badge danger">رد: @w.RejectReason</span> }
                         </td>
                         <td>@w.ApprovedByUsername</td>
-                        <td>@w.Reason</td>
                     </tr>
                 }
             </tbody>
@@ -82,14 +87,18 @@ else
         if (tab=="entries")
         {
             csv.AppendLine("کد,ماده,مقدار,واحد,قیمت,تاریخ ورود,تاریخ انقضا,ثبت‌کننده");
-            foreach (var e in entries) csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.Quantity},{e.Material?.Unit},{e.PricePerUnit},{e.EntryDate:yyyy/MM/dd},{e.ExpiryDate:yyyy/MM/dd},{e.CreatedByUsername}");
+            foreach (var e in entries)
+                csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.Quantity},{e.Material?.Unit},{e.PricePerUnit},{e.EntryDate.ToShamsi()},{e.ExpiryDate.ToShamsi()},{e.CreatedByUsername}");
         }
         else
         {
-            csv.AppendLine("کد,ماده,مقدار,واحد,تاریخ,کاربر,وضعیت,تایید‌کننده,دلیل رد");
-            foreach (var w in withdrawals) csv.AppendLine($"{w.Material?.Code},{w.Material?.Name},{w.Quantity},{w.Material?.Unit},{w.WithdrawalDate:yyyy/MM/dd},{w.CreatedByUsername},{w.Status},{w.ApprovedByUsername},{w.RejectReason}");
+            csv.AppendLine("کد,ماده,مقدار,واحد,تاریخ خروج,کاربر,وضعیت,تایید‌کننده");
+            foreach (var w in withdrawals)
+                csv.AppendLine($"{w.Material?.Code},{w.Material?.Name},{w.Quantity},{w.Material?.Unit},{w.WithdrawalDate.ToShamsi()},{w.CreatedByUsername},{w.Status},{w.ApprovedByUsername}");
         }
-        var bytes=System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
-        await JS.InvokeVoidAsync("downloadFile", Convert.ToBase64String(bytes), tab=="entries"?"entries.csv":"withdrawals.csv");
+        var bytes = System.Text.Encoding.UTF8.GetPreamble()
+            .Concat(System.Text.Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+        await JS.InvokeVoidAsync("downloadFile", Convert.ToBase64String(bytes),
+            tab=="entries" ? "entries.csv" : "withdrawals.csv");
     }
 }

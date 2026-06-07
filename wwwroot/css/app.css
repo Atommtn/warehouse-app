@@ -347,3 +347,7 @@ code { background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:.78rem;
 @media (max-width: 400px) {
   .stats-grid { grid-template-columns: 1fr; }
 }
+
+/* Persian DatePicker */
+.persian-datepicker { position: relative; }
+.date-error { color: var(--danger); font-size: .75rem; margin-top: 3px; display: block; }

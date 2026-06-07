@@ -1,0 +1,49 @@
+@using WarehouseApp.Services
+@using System.Globalization
+
+<div class="persian-datepicker">
+    <input type="text"
+           class="form-input @CssClass"
+           value="@displayValue"
+           placeholder="@Placeholder"
+           @oninput="OnInput"
+           maxlength="10" />
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <small class="date-error">@error</small>
+    }
+</div>
+
+@code {
+    [Parameter] public DateTime Value { get; set; } = DateTime.Today;
+    [Parameter] public EventCallback<DateTime> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "مثال: 1403/01/15";
+    [Parameter] public string CssClass { get; set; } = "";
+
+    string displayValue = "";
+    string error = "";
+
+    protected override void OnParametersSet()
+    {
+        // فقط اولین بار مقدار را نمایش بده
+        if (string.IsNullOrEmpty(displayValue) && Value != default)
+            displayValue = Value.ToShamsi();
+    }
+
+    async Task OnInput(ChangeEventArgs e)
+    {
+        var input = e.Value?.ToString() ?? "";
+        displayValue = input;
+        error = "";
+
+        // اگر کامل وارد شد (10 کاراکتر: 1403/01/15)
+        if (input.Length == 10)
+        {
+            var date = PersianDate.TryParseShamsi(input);
+            if (date.HasValue)
+                await ValueChanged.InvokeAsync(date.Value);
+            else
+                error = "تاریخ معتبر نیست";
+        }
+    }
+}

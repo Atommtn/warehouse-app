@@ -18,7 +18,7 @@
                 <option value="0">انتخاب کنید...</option>
                 @foreach (var m in materials) { <option value="@m.Id">[@m.Code] @m.Name — @m.CurrentStock @m.Unit</option> }
             </select>
-            @if (sel!=null) { <small class="form-hint">موجودی: @sel.CurrentStock @sel.Unit</small> }
+            @if (sel != null) { <small class="form-hint">موجودی: @sel.CurrentStock @sel.Unit</small> }
         </div>
         <div class="form-group">
             <label>مقدار *</label>
@@ -26,7 +26,7 @@
         </div>
         <div class="form-group">
             <label>تاریخ خروج *</label>
-            <input @bind="wDate" type="date" class="form-input" />
+            <PersianDatePicker Value="@wDate" ValueChanged="@(d => wDate = d)" Placeholder="1403/01/15" />
         </div>
         <div class="form-group">
             <label>دلیل خروج</label>
@@ -43,10 +43,9 @@
     </div>
 </div>
 
-<!-- پنل تایید برای مدیر -->
 @if (Auth.CanApprove && pendingList.Any())
 {
-    <div class="section-title orange-title">⏳ درخواست‌های در انتظار تایید (@pendingList.Count)</div>
+    <div class="section-title orange-title">⏳ در انتظار تایید (@pendingList.Count)</div>
     @foreach (var w in pendingList)
     {
         <div class="approval-card">
@@ -55,11 +54,11 @@
                 <span>@w.Quantity @w.Material?.Unit</span>
                 <span>متصدی: @w.CreatedByUsername</span>
                 <span>@w.Reason</span>
-                <span class="approval-date">@w.CreatedAt.ToString("yyyy/MM/dd HH:mm")</span>
+                <span class="approval-date">@w.CreatedAt.ToShamsiWithTime()</span>
             </div>
             <div class="approval-actions">
                 <button class="btn btn-success btn-sm" @onclick="()=>Approve(w.Id)">✅ تایید</button>
-                <button class="btn btn-danger btn-sm" @onclick="()=>ShowReject(w.Id)">❌ رد</button>
+                <button class="btn btn-danger btn-sm"  @onclick="()=>ShowReject(w.Id)">❌ رد</button>
             </div>
         </div>
         @if (rejectingId == w.Id)
@@ -84,11 +83,11 @@
                     <td><code>@w.Material?.Code</code></td>
                     <td>@w.Material?.Name</td>
                     <td>@w.Quantity.ToString("N2") @w.Material?.Unit</td>
-                    <td>@w.WithdrawalDate.ToString("yyyy/MM/dd")</td>
+                    <td>@w.WithdrawalDate.ToShamsi()</td>
                     <td>@w.CreatedByUsername</td>
                     <td>
                         @if (w.Status == WithdrawalStatus.Pending)   { <span class="status-badge warning">در انتظار</span> }
-                        else if (w.Status == WithdrawalStatus.Approved) { <span class="status-badge ok">تایید شد</span> }
+                        else if (w.Status == WithdrawalStatus.Approved) { <span class="status-badge ok">تایید</span> }
                         else { <span class="status-badge danger">رد شد</span> }
                     </td>
                 </tr>
@@ -125,34 +124,24 @@
         try
         {
             var isAttendant = Auth.CurrentUser?.Role == UserRole.Attendant;
-            var status = isAttendant ? WithdrawalStatus.Pending : WithdrawalStatus.Approved;
             await Warehouse.AddWithdrawalAsync(new StockWithdrawal
             {
                 MaterialId=selId, Quantity=qty, WithdrawalDate=wDate, Reason=reason,
                 CreatedByUserId=Auth.CurrentUser!.Id, CreatedByUsername=Auth.CurrentUser.Username,
-                Status=status,
+                Status = isAttendant ? WithdrawalStatus.Pending : WithdrawalStatus.Approved,
                 ApprovedByUsername = isAttendant ? null : Auth.CurrentUser.Username,
                 ApprovedAt = isAttendant ? null : DateTime.UtcNow
             });
             ok = isAttendant
-                ? $"📤 درخواست برداشت {qty} {sel?.Unit} از {sel?.Name} ارسال شد — منتظر تایید مدیر"
-                : $"✅ {qty} {sel?.Unit} از [{sel?.Code}] {sel?.Name} ثبت شد";
+                ? $"📤 درخواست {qty} {sel?.Unit} از {sel?.Name} ارسال شد"
+                : $"✅ {qty} {sel?.Unit} از [{sel?.Code}] {sel?.Name} در {wDate.ToShamsi()} ثبت شد";
             await Load(); Reset();
         }
         catch (Exception ex) { err = $"❌ {ex.Message}"; }
     }
 
-    async Task Approve(int id)
-    {
-        await Warehouse.ApproveWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username);
-        await Load();
-    }
+    async Task Approve(int id) { await Warehouse.ApproveWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username); await Load(); }
     void ShowReject(int id) { rejectingId=id; rejectReason=""; }
-    async Task DoReject(int id)
-    {
-        await Warehouse.RejectWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username, rejectReason);
-        rejectingId=null; await Load();
-    }
-
+    async Task DoReject(int id) { await Warehouse.RejectWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username, rejectReason); rejectingId=null; await Load(); }
     void Reset() { selId=0; qty=0; sel=null; wDate=DateTime.Today; reason=""; }
 }
