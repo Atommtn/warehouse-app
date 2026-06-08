@@ -6,7 +6,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://0.0.0.0:9095
-      - ConnectionStrings__DefaultConnection=Server=sql2019,1433;Database=WarehouseDB;User Id=sa;Password=Mohammad1111;TrustServerCertificate=True;
+      - ConnectionStrings__DefaultConnection=Server=sql2019,1433;Database=WarehouseDB;User Id=sa;Password=2219@Atomtneda;TrustServerCertificate=True;
       - VIRTUAL_HOST=warehouse.yourdomain.com
       - VIRTUAL_PORT=9095
       - LETSENCRYPT_HOST=warehouse.yourdomain.com
