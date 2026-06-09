@@ -1,0 +1,196 @@
+@using WarehouseApp.Services
+@using WarehouseApp.Models
+@inject PriceAnalysisService PriceService
+@inject AuthService Auth
+
+<div class="page-header">
+    <h2>📈 تحلیل قیمت مواد اولیه</h2>
+    <button class="btn btn-secondary" @onclick="Load">🔄 بروزرسانی</button>
+</div>
+
+@if (!loaded)
+{
+    <div class="loading">در حال محاسبه...</div>
+}
+else
+{
+    <!-- کارت خلاصه -->
+    @if (Auth.IsAdmin)
+    {
+        <div class="stats-grid">
+            <div class="stat-card green">
+                <div class="stat-icon">💰</div>
+                <div class="stat-info">
+                    <div class="stat-value">@totalValue.ToString("N0") ﷼</div>
+                    <div class="stat-label">ارزش کل انبار (میانگین موزون)</div>
+                </div>
+            </div>
+            <div class="stat-card red">
+                <div class="stat-icon">📈</div>
+                <div class="stat-info">
+                    <div class="stat-value">@analyses.Count(a => a.Trend == PriceTrend.Up)</div>
+                    <div class="stat-label">ماده با قیمت صعودی</div>
+                </div>
+            </div>
+            <div class="stat-card blue">
+                <div class="stat-icon">📉</div>
+                <div class="stat-info">
+                    <div class="stat-value">@analyses.Count(a => a.Trend == PriceTrend.Down)</div>
+                    <div class="stat-label">ماده با قیمت نزولی</div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- جدول اصلی -->
+    <div class="table-responsive" style="margin-top:1rem">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>کد</th>
+                    <th>نام ماده</th>
+                    <th>موجودی</th>
+                    @if (Auth.CanViewPrice)
+                    {
+                        <th>آخرین خرید</th>
+                        <th>خرید قبلی</th>
+                        <th>میانگین موزون</th>
+                        <th>تغییر قیمت</th>
+                        <th>ارزش موجودی</th>
+                    }
+                    <th>روند</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in analyses)
+                {
+                    <tr>
+                        <td><code>@a.MaterialCode</code></td>
+                        <td><strong>@a.MaterialName</strong></td>
+                        <td>@a.CurrentStock.ToString("N2") @a.Unit</td>
+                        @if (Auth.CanViewPrice)
+                        {
+                            <td>@a.LastPrice.ToString("N0") ﷼</td>
+                            <td>
+                                @if (a.History.Count >= 2)
+                                { @a.History[^2].Price.ToString("N0") <text> ﷼</text> }
+                                else { <span class="text-muted">-</span> }
+                            </td>
+                            <td><strong>@a.WeightedAvgPrice.ToString("N0") ﷼</strong></td>
+                            <td>
+                                @if (a.Trend == PriceTrend.NoData)
+                                {
+                                    <span class="text-muted">بدون داده</span>
+                                }
+                                else if (a.Trend == PriceTrend.Stable)
+                                {
+                                    <span class="price-stable">← بدون تغییر</span>
+                                }
+                                else
+                                {
+                                    <span class="@(a.Trend == PriceTrend.Up ? "price-up" : "price-down")">
+                                        @(a.Trend == PriceTrend.Up ? "↑" : "↓")
+                                        @Math.Abs(a.PriceChangePercent)%
+                                        (@(a.PriceChange > 0 ? "+" : "")@a.PriceChange.ToString("N0") ﷼)
+                                    </span>
+                                }
+                            </td>
+                            <td>@a.StockValue.ToString("N0") ﷼</td>
+                        }
+                        <td>
+                            @if (a.Trend == PriceTrend.Up)    { <span class="trend-badge up">↑ گران‌تر</span> }
+                            else if (a.Trend == PriceTrend.Down)  { <span class="trend-badge down">↓ ارزان‌تر</span> }
+                            else if (a.Trend == PriceTrend.Stable){ <span class="trend-badge stable">← ثابت</span> }
+                            else                                   { <span class="trend-badge nodata">بدون خرید</span> }
+                        </td>
+                        <td>
+                            <button class="btn-icon" @onclick="()=>ToggleDetail(a.MaterialId)" title="تاریخچه">
+                                @(expandedId == a.MaterialId ? "▲" : "▼")
+                            </button>
+                        </td>
+                    </tr>
+
+                    @if (expandedId == a.MaterialId && a.History.Any())
+                    {
+                        <tr class="detail-row">
+                            <td colspan="@(Auth.CanViewPrice ? 9 : 4)">
+                                <div class="price-history">
+                                    <div class="price-history-title">📊 تاریخچه خریدهای [@a.MaterialCode] @a.MaterialName</div>
+                                    <table class="history-table">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>تاریخ ورود</th>
+                                                <th>مقدار</th>
+                                                @if (Auth.CanViewPrice)
+                                                {
+                                                    <th>قیمت خرید</th>
+                                                    <th>میانگین تجمعی</th>
+                                                    <th>تغییر</th>
+                                                }
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @for (int i = 0; i < a.History.Count; i++)
+                                            {
+                                                var h = a.History[i];
+                                                var idx = i;
+                                                <tr>
+                                                    <td>@(i + 1)</td>
+                                                    <td>@h.EntryDate.ToShamsi()</td>
+                                                    <td>@h.Quantity.ToString("N2") @a.Unit</td>
+                                                    @if (Auth.CanViewPrice)
+                                                    {
+                                                        <td>@h.Price.ToString("N0") ﷼</td>
+                                                        <td><strong>@h.CumulativeAvg.ToString("N0") ﷼</strong></td>
+                                                        <td>
+                                                            @if (idx == 0)
+                                                            {
+                                                                <span class="text-muted">اولین خرید</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                var prev = a.History[idx - 1].Price;
+                                                                var diff = h.Price - prev;
+                                                                var pct  = prev > 0 ? Math.Round(diff / prev * 100, 1) : 0;
+                                                                <span class="@(diff > 0 ? "price-up" : diff < 0 ? "price-down" : "price-stable")">
+                                                                    @(diff > 0 ? "↑" : diff < 0 ? "↓" : "←")
+                                                                    @Math.Abs(pct)%
+                                                                </span>
+                                                            }
+                                                        </td>
+                                                    }
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    bool loaded;
+    List<PriceAnalysis> analyses = new();
+    decimal totalValue;
+    int? expandedId;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    async Task Load()
+    {
+        loaded = false;
+        analyses = await PriceService.GetAllAnalysisAsync();
+        if (Auth.IsAdmin)
+            totalValue = analyses.Sum(a => a.StockValue);
+        loaded = true;
+    }
+
+    void ToggleDetail(int id) => expandedId = expandedId == id ? null : id;
+}

@@ -11,16 +11,15 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
     ?? "Server=sql2019,1433;Database=WarehouseDB;User Id=sa;Password=Mohammad1111;TrustServerCertificate=True;";
 
-// استفاده از DbContextFactory برای جلوگیری از مشکل concurrent access
 builder.Services.AddDbContextFactory<AppDbContext>(options =>
     options.UseSqlServer(connectionString));
 
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<WarehouseService>();
+builder.Services.AddScoped<PriceAnalysisService>();
 
 var app = builder.Build();
 
-// Initialize DB
 using (var scope = app.Services.CreateScope())
 {
     var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();

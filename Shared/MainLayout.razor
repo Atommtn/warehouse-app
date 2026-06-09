@@ -3,7 +3,6 @@
 @inject WarehouseService Warehouse
 
 <div class="app-shell">
-    <!-- Mobile Header -->
     <div class="mobile-header">
         <button class="hamburger" @onclick="ToggleSidebar">☰</button>
         <span class="mobile-title">🏭 انبارداری</span>
@@ -11,7 +10,6 @@
         { <span class="mobile-badge">@pendingCount</span> }
     </div>
 
-    <!-- Overlay -->
     @if (sidebarOpen)
     { <div class="sidebar-overlay" @onclick="ToggleSidebar"></div> }
 
@@ -27,9 +25,9 @@
         </div>
 
         <ul class="nav-menu">
-            <li class="@A("dashboard")"><button @onclick='()=>Go("dashboard")'>📊 داشبورد</button></li>
-            <li class="@A("materials")"><button @onclick='()=>Go("materials")'>📦 مواد اولیه</button></li>
-            <li class="@A("suppliers")"><button @onclick='()=>Go("suppliers")'>🏢 تأمین‌کنندگان</button></li>
+            <li class="@A("dashboard")">  <button @onclick='()=>Go("dashboard")'>📊 داشبورد</button></li>
+            <li class="@A("materials")">  <button @onclick='()=>Go("materials")'>📦 مواد اولیه</button></li>
+            <li class="@A("suppliers")">  <button @onclick='()=>Go("suppliers")'>🏢 تأمین‌کنندگان</button></li>
             @if (Auth.IsManager)
             {
                 <li class="@A("entry")"><button @onclick='()=>Go("entry")'>⬆️ ورود به انبار</button></li>
@@ -43,7 +41,8 @@
                     </button>
                 </li>
             }
-            <li class="@A("history")"><button @onclick='()=>Go("history")'>📋 تاریخچه</button></li>
+            <li class="@A("history")">   <button @onclick='()=>Go("history")'>📋 تاریخچه</button></li>
+            <li class="@A("prices")">    <button @onclick='()=>Go("prices")'>📈 تحلیل قیمت</button></li>
             <li class="@A("alerts")">
                 <button @onclick='()=>Go("alerts")'>
                     🔔 هشدارها
@@ -63,35 +62,36 @@
     </nav>
 
     <main class="main-content" @onclick="CloseSidebar">
-        @if (page == "dashboard")                         { <DashboardPage /> }
-        else if (page == "materials")                     { <MaterialsPage /> }
-        else if (page == "suppliers")                     { <SuppliersPage /> }
-        else if (page == "entry"       && Auth.IsManager) { <StockEntryPage /> }
-        else if (page == "withdrawal"  && Auth.IsAttendant){ <WithdrawalPage /> }
-        else if (page == "history")                       { <HistoryPage /> }
-        else if (page == "alerts")                        { <AlertsPage /> }
-        else if (page == "users"       && Auth.IsAdmin)   { <UsersPage /> }
+        @if (page == "dashboard")                          { <DashboardPage /> }
+        else if (page == "materials")                      { <MaterialsPage /> }
+        else if (page == "suppliers")                      { <SuppliersPage /> }
+        else if (page == "entry"      && Auth.IsManager)   { <StockEntryPage /> }
+        else if (page == "withdrawal" && Auth.IsAttendant) { <WithdrawalPage /> }
+        else if (page == "history")                        { <HistoryPage /> }
+        else if (page == "prices")                         { <PriceAnalysisPage /> }
+        else if (page == "alerts")                         { <AlertsPage /> }
+        else if (page == "users"      && Auth.IsAdmin)     { <UsersPage /> }
     </main>
 </div>
 
 @code {
     string page = "dashboard";
     int alertCount, pendingCount;
-    bool sidebarOpen = false;
+    bool sidebarOpen;
 
     protected override async Task OnInitializedAsync() => await LoadCounts();
 
     async Task LoadCounts()
     {
         var stats = await Warehouse.GetDashboardStatsAsync();
-        alertCount = stats.alertCount;
+        alertCount   = stats.alertCount;
         pendingCount = stats.pendingCount;
     }
 
     void Go(string p) { page = p; sidebarOpen = false; }
     string A(string p) => page == p ? "active" : "";
     void ToggleSidebar() => sidebarOpen = !sidebarOpen;
-    void CloseSidebar() { if (sidebarOpen) sidebarOpen = false; }
+    void CloseSidebar()  { if (sidebarOpen) sidebarOpen = false; }
 
     string RoleLabel(UserRole? r) => r switch
     {
