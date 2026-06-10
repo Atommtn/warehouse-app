@@ -231,10 +231,10 @@ html, body { height: 100%; font-family: 'Vazirmatn', sans-serif; background: var
 .role-operator { background:#d1fae5; color:#90d6c2; }
 .role-viewer   { background:#f3f4f6; color:#9ab1d6; }
 
-.user-badge.role-admin    { background:#5b21b6; }
-.user-badge.role-manager  { background:#1e40af; }
-.user-badge.role-operator { background:#065f46; }
-.user-badge.role-viewer   { background:#6b7280; }
+.user-badge.role-admin    { background: #9c83c2; }
+.user-badge.role-manager  { background: #778ac6; }
+.user-badge.role-operator { background: #74cdb4; }
+.user-badge.role-viewer   { background: #a2aab8; }
 
 /* ── Btn Success ── */
 .btn-success { background:#0e9f6e; color:#fff; }
