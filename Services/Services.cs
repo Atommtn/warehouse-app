@@ -25,11 +25,8 @@ public class AuthService
         await using var db = await _factory.CreateDbContextAsync();
         var user = await db.Users.FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
         if (user == null || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash)) return false;
-        CurrentUser = user;
-        OnAuthChanged?.Invoke();
-        return true;
+        CurrentUser = user; OnAuthChanged?.Invoke(); return true;
     }
-
     public void Logout() { CurrentUser = null; OnAuthChanged?.Invoke(); }
 }
 
@@ -40,89 +37,61 @@ public class WarehouseService
 
     // ── Users ──
     public async Task<List<User>> GetUsersAsync()
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        return await db.Users.OrderBy(u => u.Username).ToListAsync();
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); return await db.Users.OrderBy(u => u.Username).ToListAsync(); }
     public async Task AddUserAsync(User u)
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        db.Users.Add(u); await db.SaveChangesAsync();
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); db.Users.Add(u); await db.SaveChangesAsync(); }
     public async Task UpdateUserAsync(User u)
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        db.Users.Update(u); await db.SaveChangesAsync();
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); db.Users.Update(u); await db.SaveChangesAsync(); }
     public async Task<bool> UsernameExistsAsync(string username, int? excludeId = null)
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        return await db.Users.AnyAsync(u => u.Username == username && u.Id != excludeId);
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); return await db.Users.AnyAsync(u => u.Username == username && u.Id != excludeId); }
+
+    // ── Units ──
+    public async Task<List<Unit>> GetUnitsAsync()
+    { await using var db = await _factory.CreateDbContextAsync(); return await db.Units.Where(u => u.IsActive).OrderBy(u => u.Name).ToListAsync(); }
+    public async Task AddUnitAsync(Unit u)
+    { await using var db = await _factory.CreateDbContextAsync(); db.Units.Add(u); await db.SaveChangesAsync(); }
+    public async Task DeleteUnitAsync(int id)
+    { await using var db = await _factory.CreateDbContextAsync(); var u = await db.Units.FindAsync(id); if (u!=null){u.IsActive=false; await db.SaveChangesAsync();} }
+
+    // ── Groups ──
+    public async Task<List<MaterialGroup>> GetGroupsAsync()
+    { await using var db = await _factory.CreateDbContextAsync(); return await db.MaterialGroups.Where(g => g.IsActive).OrderBy(g => g.Name).ToListAsync(); }
+    public async Task AddGroupAsync(MaterialGroup g)
+    { await using var db = await _factory.CreateDbContextAsync(); db.MaterialGroups.Add(g); await db.SaveChangesAsync(); }
+    public async Task DeleteGroupAsync(int id)
+    { await using var db = await _factory.CreateDbContextAsync(); var g = await db.MaterialGroups.FindAsync(id); if (g!=null){g.IsActive=false; await db.SaveChangesAsync();} }
 
     // ── Suppliers ──
     public async Task<List<Supplier>> GetSuppliersAsync()
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        return await db.Suppliers.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); return await db.Suppliers.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync(); }
     public async Task<Supplier?> GetSupplierAsync(int id)
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        return await db.Suppliers.FindAsync(id);
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); return await db.Suppliers.FindAsync(id); }
     public async Task AddSupplierAsync(Supplier s)
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        db.Suppliers.Add(s); await db.SaveChangesAsync();
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); db.Suppliers.Add(s); await db.SaveChangesAsync(); }
     public async Task UpdateSupplierAsync(Supplier s)
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        db.Suppliers.Update(s); await db.SaveChangesAsync();
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); db.Suppliers.Update(s); await db.SaveChangesAsync(); }
     public async Task DeleteSupplierAsync(int id)
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        var s = await db.Suppliers.FindAsync(id);
-        if (s != null) { s.IsActive = false; await db.SaveChangesAsync(); }
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); var s = await db.Suppliers.FindAsync(id); if (s!=null){s.IsActive=false; await db.SaveChangesAsync();} }
 
     // ── Materials ──
     public async Task<List<Material>> GetMaterialsAsync(string? search = null)
     {
         await using var db = await _factory.CreateDbContextAsync();
-        var q = db.Materials.Include(m => m.Supplier).Where(m => m.IsActive).AsQueryable();
+        var q = db.Materials.Include(m => m.Supplier).Include(m => m.Unit).Include(m => m.Group).Where(m => m.IsActive).AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
             q = q.Where(m => m.Name.Contains(search) || m.Code.Contains(search));
         return await q.OrderBy(m => m.Code).ToListAsync();
     }
     public async Task<Material?> GetMaterialAsync(int id)
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        return await db.Materials.Include(m => m.Supplier).FirstOrDefaultAsync(m => m.Id == id);
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); return await db.Materials.Include(m => m.Supplier).Include(m => m.Unit).Include(m => m.Group).FirstOrDefaultAsync(m => m.Id == id); }
     public async Task<bool> CodeExistsAsync(string code, int? excludeId = null)
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        return await db.Materials.AnyAsync(m => m.Code == code && m.Id != excludeId);
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); return await db.Materials.AnyAsync(m => m.Code == code && m.Id != excludeId); }
     public async Task AddMaterialAsync(Material m)
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        db.Materials.Add(m); await db.SaveChangesAsync();
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); db.Materials.Add(m); await db.SaveChangesAsync(); }
     public async Task UpdateMaterialAsync(Material m)
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        db.Materials.Update(m); await db.SaveChangesAsync();
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); db.Materials.Update(m); await db.SaveChangesAsync(); }
     public async Task DeleteMaterialAsync(int id)
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        var m = await db.Materials.FindAsync(id);
-        if (m != null) { m.IsActive = false; await db.SaveChangesAsync(); }
-    }
+    { await using var db = await _factory.CreateDbContextAsync(); var m = await db.Materials.FindAsync(id); if (m!=null){m.IsActive=false; await db.SaveChangesAsync();} }
 
     // ── Stock Entries ──
     public async Task AddStockEntryAsync(StockEntry entry)
@@ -138,8 +107,7 @@ public class WarehouseService
         await using var db = await _factory.CreateDbContextAsync();
         var q = db.StockEntries.Include(e => e.Material).AsQueryable();
         if (materialId.HasValue) q = q.Where(e => e.MaterialId == materialId);
-        if (!string.IsNullOrWhiteSpace(search))
-            q = q.Where(e => e.Material!.Name.Contains(search) || e.Material.Code.Contains(search));
+        if (!string.IsNullOrWhiteSpace(search)) q = q.Where(e => e.Material!.Name.Contains(search) || e.Material.Code.Contains(search));
         return await q.OrderByDescending(e => e.EntryDate).Take(200).ToListAsync();
     }
 
@@ -149,55 +117,41 @@ public class WarehouseService
         await using var db = await _factory.CreateDbContextAsync();
         var mat = await db.Materials.FindAsync(w.MaterialId);
         if (mat == null) throw new Exception("ماده یافت نشد");
-        if (mat.CurrentStock < w.Quantity) throw new Exception($"موجودی کافی نیست (موجودی: {mat.CurrentStock} {mat.Unit})");
-        // متصدی: در انتظار تایید — موجودی هنوز کم نمیشه
-        // اپراتور و بالاتر: مستقیم تایید میشه
-        if (w.Status == WithdrawalStatus.Approved)
-            mat.CurrentStock -= w.Quantity;
-        db.StockWithdrawals.Add(w);
-        await db.SaveChangesAsync();
+        if (mat.CurrentStock < w.Quantity) throw new Exception($"موجودی کافی نیست (موجودی: {mat.CurrentStock})");
+        if (w.Status == WithdrawalStatus.Approved) mat.CurrentStock -= w.Quantity;
+        db.StockWithdrawals.Add(w); await db.SaveChangesAsync();
     }
     public async Task<List<StockWithdrawal>> GetWithdrawalsAsync(int? materialId = null, string? search = null)
     {
         await using var db = await _factory.CreateDbContextAsync();
         var q = db.StockWithdrawals.Include(w => w.Material).AsQueryable();
         if (materialId.HasValue) q = q.Where(w => w.MaterialId == materialId);
-        if (!string.IsNullOrWhiteSpace(search))
-            q = q.Where(w => w.Material!.Name.Contains(search) || w.Material.Code.Contains(search));
+        if (!string.IsNullOrWhiteSpace(search)) q = q.Where(w => w.Material!.Name.Contains(search) || w.Material.Code.Contains(search));
         return await q.OrderByDescending(w => w.WithdrawalDate).Take(200).ToListAsync();
     }
     public async Task<List<StockWithdrawal>> GetPendingWithdrawalsAsync()
     {
         await using var db = await _factory.CreateDbContextAsync();
-        return await db.StockWithdrawals.Include(w => w.Material)
-            .Where(w => w.Status == WithdrawalStatus.Pending)
-            .OrderByDescending(w => w.CreatedAt).ToListAsync();
+        return await db.StockWithdrawals.Include(w => w.Material).Where(w => w.Status == WithdrawalStatus.Pending).OrderByDescending(w => w.CreatedAt).ToListAsync();
     }
-    public async Task ApproveWithdrawalAsync(int withdrawalId, int approvedByUserId, string approvedByUsername)
+    public async Task ApproveWithdrawalAsync(int id, int userId, string username)
     {
         await using var db = await _factory.CreateDbContextAsync();
-        var w = await db.StockWithdrawals.Include(x => x.Material).FirstOrDefaultAsync(x => x.Id == withdrawalId);
+        var w = await db.StockWithdrawals.Include(x => x.Material).FirstOrDefaultAsync(x => x.Id == id);
         if (w == null) return;
         var mat = await db.Materials.FindAsync(w.MaterialId);
         if (mat == null) return;
-        if (mat.CurrentStock < w.Quantity) throw new Exception($"موجودی کافی نیست (موجودی: {mat.CurrentStock} {mat.Unit})");
+        if (mat.CurrentStock < w.Quantity) throw new Exception($"موجودی کافی نیست");
         mat.CurrentStock -= w.Quantity;
-        w.Status = WithdrawalStatus.Approved;
-        w.ApprovedByUserId = approvedByUserId;
-        w.ApprovedByUsername = approvedByUsername;
-        w.ApprovedAt = DateTime.UtcNow;
+        w.Status = WithdrawalStatus.Approved; w.ApprovedByUserId = userId; w.ApprovedByUsername = username; w.ApprovedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
     }
-    public async Task RejectWithdrawalAsync(int withdrawalId, int rejectedByUserId, string rejectedByUsername, string reason)
+    public async Task RejectWithdrawalAsync(int id, int userId, string username, string reason)
     {
         await using var db = await _factory.CreateDbContextAsync();
-        var w = await db.StockWithdrawals.FindAsync(withdrawalId);
+        var w = await db.StockWithdrawals.FindAsync(id);
         if (w == null) return;
-        w.Status = WithdrawalStatus.Rejected;
-        w.ApprovedByUserId = rejectedByUserId;
-        w.ApprovedByUsername = rejectedByUsername;
-        w.ApprovedAt = DateTime.UtcNow;
-        w.RejectReason = reason;
+        w.Status = WithdrawalStatus.Rejected; w.ApprovedByUserId = userId; w.ApprovedByUsername = username; w.ApprovedAt = DateTime.UtcNow; w.RejectReason = reason;
         await db.SaveChangesAsync();
     }
 
@@ -206,29 +160,21 @@ public class WarehouseService
     {
         await using var db = await _factory.CreateDbContextAsync();
         var alerts = new List<StockAlert>();
-        var materials = await db.Materials.Where(m => m.IsActive).ToListAsync();
-        var now = DateTime.UtcNow;
-        var soonDate = now.AddDays(7);
+        var materials = await db.Materials.Include(m => m.Unit).Where(m => m.IsActive).ToListAsync();
+        var now = DateTime.UtcNow; var soon = now.AddDays(7);
 
-        foreach (var m in materials)
+        foreach (var mat in materials)
         {
-            if (!string.IsNullOrWhiteSpace(search) &&
-                !m.Name.Contains(search, StringComparison.OrdinalIgnoreCase) &&
-                !m.Code.Contains(search, StringComparison.OrdinalIgnoreCase)) continue;
-            if (m.CurrentStock <= m.MinStockLevel)
-                alerts.Add(new StockAlert { MaterialId=m.Id, MaterialName=m.Name, MaterialCode=m.Code, Unit=m.Unit, CurrentStock=m.CurrentStock, MinStockLevel=m.MinStockLevel, Type=AlertType.LowStock, Message=$"موجودی {m.Name} ({m.CurrentStock} {m.Unit}) به حد هشدار رسیده" });
+            if (!string.IsNullOrWhiteSpace(search) && !mat.Name.Contains(search, StringComparison.OrdinalIgnoreCase) && !mat.Code.Contains(search, StringComparison.OrdinalIgnoreCase)) continue;
+            if (mat.CurrentStock <= mat.MinStockLevel)
+                alerts.Add(new StockAlert { MaterialId=mat.Id, MaterialName=mat.Name, MaterialCode=mat.Code, Unit=mat.Unit?.Name??"", CurrentStock=mat.CurrentStock, MinStockLevel=mat.MinStockLevel, Type=AlertType.LowStock, Message=$"موجودی {mat.Name} ({mat.CurrentStock}) به حد هشدار رسیده" });
         }
-
-        var expiring = await db.StockEntries.Include(e => e.Material)
-            .Where(e => e.ExpiryDate <= soonDate && e.ExpiryDate >= now && e.Material!.IsActive).ToListAsync();
+        var expiring = await db.StockEntries.Include(e => e.Material).Where(e => e.ExpiryDate <= soon && e.ExpiryDate >= now && e.Material!.IsActive).ToListAsync();
         foreach (var e in expiring)
-            alerts.Add(new StockAlert { MaterialId=e.MaterialId, MaterialName=e.Material?.Name??"", MaterialCode=e.Material?.Code??"", Unit=e.Material?.Unit??"", CurrentStock=e.Quantity, ExpiryDate=e.ExpiryDate, Type=AlertType.Expiring, Message=$"{e.Material?.Name} تا {(e.ExpiryDate-now).Days} روز دیگر منقضی می‌شود" });
-
-        var expired = await db.StockEntries.Include(e => e.Material)
-            .Where(e => e.ExpiryDate < now && e.Material!.IsActive).ToListAsync();
+            alerts.Add(new StockAlert { MaterialId=e.MaterialId, MaterialName=e.Material?.Name??"", MaterialCode=e.Material?.Code??"", Type=AlertType.Expiring, ExpiryDate=e.ExpiryDate, Message=$"{e.Material?.Name} تا {(e.ExpiryDate-now).Days} روز دیگر منقضی می‌شود" });
+        var expired = await db.StockEntries.Include(e => e.Material).Where(e => e.ExpiryDate < now && e.Material!.IsActive).ToListAsync();
         foreach (var e in expired)
-            alerts.Add(new StockAlert { MaterialId=e.MaterialId, MaterialName=e.Material?.Name??"", MaterialCode=e.Material?.Code??"", Unit=e.Material?.Unit??"", CurrentStock=e.Quantity, ExpiryDate=e.ExpiryDate, Type=AlertType.Expired, Message=$"{e.Material?.Name} (ورودی {e.EntryDate:yyyy/MM/dd}) منقضی شده!" });
-
+            alerts.Add(new StockAlert { MaterialId=e.MaterialId, MaterialName=e.Material?.Name??"", MaterialCode=e.Material?.Code??"", Type=AlertType.Expired, ExpiryDate=e.ExpiryDate, Message=$"{e.Material?.Name} منقضی شده!" });
         return alerts;
     }
 
@@ -238,16 +184,13 @@ public class WarehouseService
         var materials = await db.Materials.Where(m => m.IsActive).ToListAsync();
         var alerts = await GetAlertsAsync();
         var pendingCount = await db.StockWithdrawals.CountAsync(w => w.Status == WithdrawalStatus.Pending);
-        return (materials.Sum(m => m.CurrentStock * m.PricePerUnit), materials.Count,
-                materials.Count(m => m.CurrentStock <= m.MinStockLevel), alerts.Count, pendingCount);
+        return (materials.Sum(m => m.CurrentStock * m.PricePerUnit), materials.Count, materials.Count(m => m.CurrentStock <= m.MinStockLevel), alerts.Count, pendingCount);
     }
 
     public async Task<(List<Material> materials, List<StockEntry> entries, List<StockWithdrawal> withdrawals, List<StockAlert> alerts)> GetExportDataAsync()
     {
-        var materials = await GetMaterialsAsync();
-        var entries = await GetEntriesAsync();
-        var withdrawals = await GetWithdrawalsAsync();
-        var als = await GetAlertsAsync();
-        return (materials, entries, withdrawals, als);
+        var mats = await GetMaterialsAsync(); var entries = await GetEntriesAsync();
+        var withdrawals = await GetWithdrawalsAsync(); var als = await GetAlertsAsync();
+        return (mats, entries, withdrawals, als);
     }
 }

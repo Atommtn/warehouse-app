@@ -1,0 +1,179 @@
+@using WarehouseApp.Services
+@using WarehouseApp.Models
+@inject WarehouseService Warehouse
+@inject AuthService Auth
+
+<div class="page-header">
+    <h2>⚙️ تعریف اولیه</h2>
+</div>
+
+<div class="def-tabs">
+    <button class="def-tab @(tab=="units"?"active":"")"     @onclick='()=>SwitchTab("units")'>📐 واحدها</button>
+    <button class="def-tab @(tab=="groups"?"active":"")"    @onclick='()=>SwitchTab("groups")'>📁 گروه کالا</button>
+    <button class="def-tab @(tab=="suppliers"?"active":"")" @onclick='()=>SwitchTab("suppliers")'>🏢 تأمین‌کنندگان</button>
+</div>
+
+@if (tab == "units")
+{
+    <div class="def-section">
+        <div class="def-header">
+            <h3>📐 واحدهای اندازه‌گیری</h3>
+            @if (Auth.IsManager) { <button class="btn btn-primary btn-sm" @onclick="()=>showUnitForm=true">+ واحد جدید</button> }
+        </div>
+        @if (showUnitForm && Auth.IsManager)
+        {
+            <div class="inline-form">
+                <input @bind="newUnitName" class="form-input" placeholder="نام واحد (مثال: کیلوگرم)" />
+                <button class="btn btn-primary btn-sm" @onclick="AddUnit">ذخیره</button>
+                <button class="btn btn-secondary btn-sm" @onclick="()=>showUnitForm=false">انصراف</button>
+                @if (!string.IsNullOrEmpty(unitErr)) { <span class="inline-err">@unitErr</span> }
+            </div>
+        }
+        <div class="def-grid">
+            @foreach (var u in units)
+            {
+                <div class="def-chip">
+                    <span>@u.Name</span>
+                    @if (Auth.IsAdmin)
+                    {
+                        <button class="chip-del" @onclick="()=>DeleteUnit(u.Id)">×</button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+else if (tab == "groups")
+{
+    <div class="def-section">
+        <div class="def-header">
+            <h3>📁 گروه‌های کالا</h3>
+            @if (Auth.IsManager) { <button class="btn btn-primary btn-sm" @onclick="()=>showGroupForm=true">+ گروه جدید</button> }
+        </div>
+        @if (showGroupForm && Auth.IsManager)
+        {
+            <div class="inline-form">
+                <input @bind="newGroupName" class="form-input" placeholder="نام گروه (مثال: آرد)" />
+                <button class="btn btn-primary btn-sm" @onclick="AddGroup">ذخیره</button>
+                <button class="btn btn-secondary btn-sm" @onclick="()=>showGroupForm=false">انصراف</button>
+                @if (!string.IsNullOrEmpty(groupErr)) { <span class="inline-err">@groupErr</span> }
+            </div>
+        }
+        <div class="def-grid">
+            @foreach (var g in groups)
+            {
+                <div class="def-chip">
+                    <span>@g.Name</span>
+                    @if (Auth.IsAdmin)
+                    {
+                        <button class="chip-del" @onclick="()=>DeleteGroup(g.Id)">×</button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+else if (tab == "suppliers")
+{
+    <div class="def-section">
+        <div class="def-header">
+            <h3>🏢 تأمین‌کنندگان</h3>
+            @if (Auth.IsManager) { <button class="btn btn-primary btn-sm" @onclick="ShowAddSupplier">+ تأمین‌کننده جدید</button> }
+        </div>
+        @if (showSupForm && Auth.IsManager)
+        {
+            <div class="form-card">
+                <div class="form-grid">
+                    <div class="form-group"><label>نام شرکت *</label><input @bind="fSupName" class="form-input" /></div>
+                    <div class="form-group"><label>نام نماینده</label><input @bind="fSupContact" class="form-input" /></div>
+                    <div class="form-group"><label>تلفن</label><input @bind="fSupPhone" class="form-input" /></div>
+                    <div class="form-group"><label>ایمیل</label><input @bind="fSupEmail" class="form-input" /></div>
+                    <div class="form-group"><label>آدرس</label><input @bind="fSupAddress" class="form-input" /></div>
+                </div>
+                @if (!string.IsNullOrEmpty(supErr)) { <div class="alert alert-error">@supErr</div> }
+                <div class="form-actions">
+                    <button class="btn btn-primary" @onclick="SaveSupplier">💾 ذخیره</button>
+                    <button class="btn btn-secondary" @onclick="()=>showSupForm=false">انصراف</button>
+                </div>
+            </div>
+        }
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead><tr><th>نام شرکت</th><th>نماینده</th><th>تلفن</th><th>ایمیل</th>@if(Auth.IsManager){<th></th>}</tr></thead>
+                <tbody>
+                    @foreach (var s in suppliers)
+                    {
+                        <tr>
+                            <td><strong>@s.Name</strong></td>
+                            <td>@s.ContactPerson</td>
+                            <td>@s.Phone</td>
+                            <td>@s.Email</td>
+                            @if (Auth.IsManager)
+                            {
+                                <td>
+                                    <button class="btn-icon" @onclick="()=>EditSupplier(s)">✏️</button>
+                                    <button class="btn-icon" @onclick="()=>DeleteSupplier(s.Id)">🗑️</button>
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    string tab = "units";
+    List<Unit> units = new(); List<MaterialGroup> groups = new(); List<Supplier> suppliers = new();
+    bool showUnitForm, showGroupForm, showSupForm;
+    string newUnitName="", newGroupName="", unitErr="", groupErr="", supErr="";
+    string fSupName="", fSupContact="", fSupPhone="", fSupEmail="", fSupAddress="";
+    int? editSupId;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    async Task SwitchTab(string t) { tab = t; await Load(); }
+
+    async Task Load()
+    {
+        units     = await Warehouse.GetUnitsAsync();
+        groups    = await Warehouse.GetGroupsAsync();
+        suppliers = await Warehouse.GetSuppliersAsync();
+    }
+
+    async Task AddUnit()
+    {
+        unitErr = "";
+        if (string.IsNullOrWhiteSpace(newUnitName)) { unitErr = "نام اجباری است"; return; }
+        await Warehouse.AddUnitAsync(new Unit { Name = newUnitName.Trim() });
+        newUnitName = ""; showUnitForm = false; units = await Warehouse.GetUnitsAsync();
+    }
+    async Task DeleteUnit(int id) { await Warehouse.DeleteUnitAsync(id); units = await Warehouse.GetUnitsAsync(); }
+
+    async Task AddGroup()
+    {
+        groupErr = "";
+        if (string.IsNullOrWhiteSpace(newGroupName)) { groupErr = "نام اجباری است"; return; }
+        await Warehouse.AddGroupAsync(new MaterialGroup { Name = newGroupName.Trim() });
+        newGroupName = ""; showGroupForm = false; groups = await Warehouse.GetGroupsAsync();
+    }
+    async Task DeleteGroup(int id) { await Warehouse.DeleteGroupAsync(id); groups = await Warehouse.GetGroupsAsync(); }
+
+    void ShowAddSupplier() { editSupId=null; fSupName=fSupContact=fSupPhone=fSupEmail=fSupAddress=supErr=""; showSupForm=true; }
+    void EditSupplier(Supplier s) { editSupId=s.Id; fSupName=s.Name; fSupContact=s.ContactPerson; fSupPhone=s.Phone; fSupEmail=s.Email; fSupAddress=s.Address; supErr=""; showSupForm=true; }
+
+    async Task SaveSupplier()
+    {
+        supErr = "";
+        if (string.IsNullOrWhiteSpace(fSupName)) { supErr = "نام شرکت اجباری است"; return; }
+        if (editSupId.HasValue)
+        {
+            var s = await Warehouse.GetSupplierAsync(editSupId.Value);
+            if (s != null) { s.Name=fSupName; s.ContactPerson=fSupContact; s.Phone=fSupPhone; s.Email=fSupEmail; s.Address=fSupAddress; await Warehouse.UpdateSupplierAsync(s); }
+        }
+        else await Warehouse.AddSupplierAsync(new Supplier { Name=fSupName, ContactPerson=fSupContact, Phone=fSupPhone, Email=fSupEmail, Address=fSupAddress });
+        showSupForm=false; suppliers=await Warehouse.GetSuppliersAsync();
+    }
+    async Task DeleteSupplier(int id) { await Warehouse.DeleteSupplierAsync(id); suppliers=await Warehouse.GetSuppliersAsync(); }
+}

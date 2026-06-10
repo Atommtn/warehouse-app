@@ -17,25 +17,23 @@
     <div class="form-card">
         <h3>@(editId.HasValue ? "ویرایش ماده" : "ماده جدید")</h3>
         <div class="form-grid">
+            <div class="form-group"><label>کد ماده *</label><input @bind="fCode" class="form-input" placeholder="01000" /></div>
+            <div class="form-group"><label>نام ماده *</label><input @bind="fName" class="form-input" /></div>
             <div class="form-group">
-                <label>کد ماده *</label>
-                <input @bind="fCode" class="form-input" placeholder="MAT-004" />
-            </div>
-            <div class="form-group">
-                <label>نام ماده *</label>
-                <input @bind="fName" class="form-input" />
-            </div>
-            <div class="form-group">
-                <label>واحد *</label>
-                <select @bind="fUnit" class="form-input">
-                    <option>کیلوگرم</option><option>لیتر</option><option>عدد</option>
-                    <option>بسته</option><option>متر</option><option>گرم</option>
+                <label>گروه کالا</label>
+                <select @bind="fGroupId" class="form-input">
+                    <option value="">انتخاب کنید...</option>
+                    @foreach (var g in groups) { <option value="@g.Id">@g.Name</option> }
                 </select>
             </div>
             <div class="form-group">
-                <label>حد هشدار موجودی</label>
-                <input @bind="fMinStock" type="number" step="0.01" class="form-input" />
+                <label>واحد *</label>
+                <select @bind="fUnitId" class="form-input">
+                    <option value="">انتخاب کنید...</option>
+                    @foreach (var u in units) { <option value="@u.Id">@u.Name</option> }
+                </select>
             </div>
+            <div class="form-group"><label>حد هشدار موجودی</label><input @bind="fMinStock" type="number" step="0.01" class="form-input" /></div>
             <div class="form-group">
                 <label>تأمین‌کننده</label>
                 <select @bind="fSupplierId" class="form-input">
@@ -43,10 +41,7 @@
                     @foreach (var s in suppliers) { <option value="@s.Id">@s.Name</option> }
                 </select>
             </div>
-            <div class="form-group">
-                <label>توضیحات</label>
-                <input @bind="fNotes" class="form-input" />
-            </div>
+            <div class="form-group"><label>توضیحات</label><input @bind="fNotes" class="form-input" /></div>
         </div>
         <div class="form-note">💡 قیمت در زمان ورود به انبار ثبت می‌شود و میانگین موزون محاسبه خواهد شد.</div>
         @if (!string.IsNullOrEmpty(err)) { <div class="alert alert-error">@err</div> }
@@ -60,11 +55,8 @@
 <div class="table-responsive">
     <table class="data-table">
         <thead>
-            <tr>
-                <th>کد</th><th>نام</th><th>واحد</th><th>موجودی</th><th>حد هشدار</th>
-                <th>تأمین‌کننده</th><th>وضعیت</th>
-                @if (Auth.IsManager) { <th></th> }
-            </tr>
+            <tr><th>کد</th><th>نام</th><th>گروه</th><th>واحد</th><th>موجودی</th><th>هشدار</th><th>تأمین‌کننده</th><th>وضعیت</th>
+            @if (Auth.IsManager) { <th></th> }</tr>
         </thead>
         <tbody>
             @foreach (var m in materials)
@@ -72,7 +64,8 @@
                 <tr class="@(m.CurrentStock<=m.MinStockLevel?"row-warning":"")">
                     <td><code>@m.Code</code></td>
                     <td><strong>@m.Name</strong></td>
-                    <td>@m.Unit</td>
+                    <td>@(m.Group?.Name??"-")</td>
+                    <td>@(m.Unit?.Name??"-")</td>
                     <td>@m.CurrentStock.ToString("N2")</td>
                     <td>@m.MinStockLevel.ToString("N2")</td>
                     <td>@(m.Supplier?.Name??"-")</td>
@@ -96,20 +89,23 @@
 
 @code {
     List<Material> materials=new(); List<Supplier> suppliers=new();
+    List<Unit> units=new(); List<MaterialGroup> groups=new();
     bool showForm; int? editId; string search="";
-    string fCode="",fName="",fUnit="کیلوگرم",fNotes="",err="";
-    decimal fMinStock=0; int? fSupplierId;
+    string fCode="",fName="",fNotes="",err="";
+    decimal fMinStock=0; int? fSupplierId, fUnitId, fGroupId;
 
     protected override async Task OnInitializedAsync()
     {
         materials = await Warehouse.GetMaterialsAsync();
         suppliers = await Warehouse.GetSuppliersAsync();
+        units     = await Warehouse.GetUnitsAsync();
+        groups    = await Warehouse.GetGroupsAsync();
     }
 
     async Task OnSearch(ChangeEventArgs e) { search=e.Value?.ToString()??""; materials=await Warehouse.GetMaterialsAsync(search); }
 
-    void ShowAdd() { editId=null; fCode=fName=fNotes=err=""; fUnit="کیلوگرم"; fMinStock=0; fSupplierId=null; showForm=true; }
-    void Edit(Material m) { editId=m.Id; fCode=m.Code; fName=m.Name; fUnit=m.Unit; fMinStock=m.MinStockLevel; fSupplierId=m.SupplierId; fNotes=m.Notes; err=""; showForm=true; }
+    void ShowAdd() { editId=null; fCode=fName=fNotes=err=""; fMinStock=0; fSupplierId=fUnitId=fGroupId=null; showForm=true; }
+    void Edit(Material m) { editId=m.Id; fCode=m.Code; fName=m.Name; fMinStock=m.MinStockLevel; fSupplierId=m.SupplierId; fUnitId=m.UnitId; fGroupId=m.GroupId; fNotes=m.Notes; err=""; showForm=true; }
 
     async Task Save()
     {
@@ -120,12 +116,10 @@
         if (editId.HasValue)
         {
             var m = await Warehouse.GetMaterialAsync(editId.Value);
-            if (m!=null) { m.Code=fCode; m.Name=fName; m.Unit=fUnit; m.MinStockLevel=fMinStock; m.SupplierId=fSupplierId; m.Notes=fNotes; await Warehouse.UpdateMaterialAsync(m); }
+            if (m!=null) { m.Code=fCode; m.Name=fName; m.GroupId=fGroupId; m.UnitId=fUnitId; m.MinStockLevel=fMinStock; m.SupplierId=fSupplierId; m.Notes=fNotes; await Warehouse.UpdateMaterialAsync(m); }
         }
-        else
-            await Warehouse.AddMaterialAsync(new Material { Code=fCode, Name=fName, Unit=fUnit, MinStockLevel=fMinStock, SupplierId=fSupplierId, Notes=fNotes });
+        else await Warehouse.AddMaterialAsync(new Material { Code=fCode, Name=fName, GroupId=fGroupId, UnitId=fUnitId, MinStockLevel=fMinStock, SupplierId=fSupplierId, Notes=fNotes });
         showForm=false; materials=await Warehouse.GetMaterialsAsync(search);
     }
-
     async Task Delete(int id) { await Warehouse.DeleteMaterialAsync(id); materials=await Warehouse.GetMaterialsAsync(search); }
 }

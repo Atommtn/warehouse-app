@@ -226,10 +226,10 @@ html, body { height: 100%; font-family: 'Vazirmatn', sans-serif; background: var
 
 /* ── Role Badges ── */
 .role-badge { display:inline-block; padding:2px 10px; border-radius:99px; font-size:.72rem; font-weight:600; }
-.role-admin    { background:#ede9fe; color:#5b21b6; }
-.role-manager  { background:#dbeafe; color:#1e40af; }
-.role-operator { background:#d1fae5; color:#065f46; }
-.role-viewer   { background:#f3f4f6; color:#374151; }
+.role-admin    { background:#ede9fe; color:#b8a4da; }
+.role-manager  { background:#dbeafe; color:#96a7df; }
+.role-operator { background:#d1fae5; color:#90d6c2; }
+.role-viewer   { background:#f3f4f6; color:#9ab1d6; }
 
 .user-badge.role-admin    { background:#5b21b6; }
 .user-badge.role-manager  { background:#1e40af; }
@@ -379,3 +379,31 @@ code { background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:.78rem;
   border-radius: 8px; padding: .6rem 1rem;
   font-size: .82rem; color: #1e40af; margin-bottom: 1rem;
 }
+
+/* ── Definitions Page ── */
+.def-tabs { display:flex; gap:.5rem; margin-bottom:1.5rem; border-bottom:2px solid var(--border); padding-bottom:.5rem; }
+.def-tab {
+  padding:.5rem 1.25rem; border-radius:8px 8px 0 0; border:1px solid transparent;
+  background:none; cursor:pointer; font-family:inherit; font-size:.9rem; transition:all .2s;
+}
+.def-tab.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+.def-tab:hover:not(.active) { background:var(--bg); }
+
+.def-section { }
+.def-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; }
+.def-header h3 { font-size:1rem; font-weight:600; }
+
+.def-grid { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.75rem; }
+.def-chip {
+  display:inline-flex; align-items:center; gap:.4rem;
+  background:var(--bg); border:1px solid var(--border);
+  border-radius:99px; padding:.3rem .85rem; font-size:.85rem;
+}
+.chip-del {
+  background:none; border:none; cursor:pointer; color:var(--text-muted);
+  font-size:1rem; line-height:1; padding:0 2px;
+}
+.chip-del:hover { color:var(--danger); }
+
+.inline-form { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem; padding:.75rem; background:var(--bg); border-radius:8px; }
+.inline-err { color:var(--danger); font-size:.82rem; }
