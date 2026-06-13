@@ -9,7 +9,7 @@ public class PriceAnalysis
     public int MaterialId { get; set; }
     public string MaterialName { get; set; } = "";
     public string MaterialCode { get; set; } = "";
-    public string Unit { get; set; } = "";
+    public string? Unit { get; set; }
     public decimal CurrentStock { get; set; }
 
     // قیمت‌ها
@@ -81,7 +81,7 @@ public class PriceAnalysisService
             MaterialId = m.Id,
             MaterialName = m.Name,
             MaterialCode = m.Code,
-            Unit = m.Unit,
+            Unit = m.Unit?.Name,
             CurrentStock = m.CurrentStock
         };
 
