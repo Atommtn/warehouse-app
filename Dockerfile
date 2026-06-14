@@ -7,12 +7,9 @@ WORKDIR /src
 COPY ["WarehouseApp.csproj", "."]
 RUN dotnet restore
 COPY . .
-RUN dotnet build -c Release -o /app/build
-
-FROM build AS publish
 RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "WarehouseApp.dll"]
