@@ -111,6 +111,37 @@ public class WarehouseService
         return await q.OrderByDescending(e => e.EntryDate).Take(200).ToListAsync();
     }
 
+    public async Task UpdateStockEntryAsync(StockEntry entry)
+    {
+        await using var db = await _factory.CreateDbContextAsync();
+        var existing = await db.StockEntries.FindAsync(entry.Id);
+        if (existing == null) return;
+
+        var oldQty = existing.Quantity;
+        existing.Quantity     = entry.Quantity;
+        existing.PricePerUnit = entry.PricePerUnit;
+        existing.EntryDate    = entry.EntryDate;
+        existing.ExpiryDate   = entry.ExpiryDate;
+        existing.Notes        = entry.Notes;
+
+        // اصلاح موجودی ماده بر اساس تفاوت مقدار
+        var mat = await db.Materials.FindAsync(existing.MaterialId);
+        if (mat != null)
+        {
+            mat.CurrentStock += (entry.Quantity - oldQty);
+            // به‌روزرسانی قیمت واحد ماده بر اساس آخرین ورودی
+            var lastEntry = await db.StockEntries
+                .Where(e => e.MaterialId == mat.Id && e.Id != entry.Id)
+                .OrderByDescending(e => e.EntryDate)
+                .FirstOrDefaultAsync();
+            mat.PricePerUnit = entry.EntryDate >= (lastEntry?.EntryDate ?? DateTime.MinValue)
+                ? entry.PricePerUnit
+                : (lastEntry?.PricePerUnit ?? mat.PricePerUnit);
+        }
+
+        await db.SaveChangesAsync();
+    }
+
     // ── Stock Withdrawals ──
     public async Task AddWithdrawalAsync(StockWithdrawal w)
     {
@@ -172,25 +203,4 @@ public class WarehouseService
         var expiring = await db.StockEntries.Include(e => e.Material).Where(e => e.ExpiryDate <= soon && e.ExpiryDate >= now && e.Material!.IsActive).ToListAsync();
         foreach (var e in expiring)
             alerts.Add(new StockAlert { MaterialId=e.MaterialId, MaterialName=e.Material?.Name??"", MaterialCode=e.Material?.Code??"", Type=AlertType.Expiring, ExpiryDate=e.ExpiryDate, Message=$"{e.Material?.Name} تا {(e.ExpiryDate-now).Days} روز دیگر منقضی می‌شود" });
-        var expired = await db.StockEntries.Include(e => e.Material).Where(e => e.ExpiryDate < now && e.Material!.IsActive).ToListAsync();
-        foreach (var e in expired)
-            alerts.Add(new StockAlert { MaterialId=e.MaterialId, MaterialName=e.Material?.Name??"", MaterialCode=e.Material?.Code??"", Type=AlertType.Expired, ExpiryDate=e.ExpiryDate, Message=$"{e.Material?.Name} منقضی شده!" });
-        return alerts;
-    }
-
-    public async Task<(decimal totalValue, int totalMaterials, int lowStockCount, int alertCount, int pendingCount)> GetDashboardStatsAsync()
-    {
-        await using var db = await _factory.CreateDbContextAsync();
-        var materials = await db.Materials.Where(m => m.IsActive).ToListAsync();
-        var alerts = await GetAlertsAsync();
-        var pendingCount = await db.StockWithdrawals.CountAsync(w => w.Status == WithdrawalStatus.Pending);
-        return (materials.Sum(m => m.CurrentStock * m.PricePerUnit), materials.Count, materials.Count(m => m.CurrentStock <= m.MinStockLevel), alerts.Count, pendingCount);
-    }
-
-    public async Task<(List<Material> materials, List<StockEntry> entries, List<StockWithdrawal> withdrawals, List<StockAlert> alerts)> GetExportDataAsync()
-    {
-        var mats = await GetMaterialsAsync(); var entries = await GetEntriesAsync();
-        var withdrawals = await GetWithdrawalsAsync(); var als = await GetAlertsAsync();
-        return (mats, entries, withdrawals, als);
-    }
-}
+        var expired = await db.StockEntries.Include(e => e.Material).Where(e => e.ExpiryDate < now && e.Material!.IsActive).ToLi
