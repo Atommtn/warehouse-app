@@ -110,20 +110,17 @@ public class WarehouseService
         if (!string.IsNullOrWhiteSpace(search)) q = q.Where(e => e.Material!.Name.Contains(search) || e.Material.Code.Contains(search));
         return await q.OrderByDescending(e => e.EntryDate).Take(200).ToListAsync();
     }
-
     public async Task UpdateStockEntryAsync(StockEntry entry)
     {
         await using var db = await _factory.CreateDbContextAsync();
         var existing = await db.StockEntries.FindAsync(entry.Id);
         if (existing == null) return;
-
         var oldQty = existing.Quantity;
         existing.Quantity     = entry.Quantity;
         existing.PricePerUnit = entry.PricePerUnit;
         existing.EntryDate    = entry.EntryDate;
         existing.ExpiryDate   = entry.ExpiryDate;
         existing.Notes        = entry.Notes;
-
         var mat = await db.Materials.FindAsync(existing.MaterialId);
         if (mat != null)
         {
@@ -136,7 +133,6 @@ public class WarehouseService
                 ? entry.PricePerUnit
                 : (lastEntry?.PricePerUnit ?? mat.PricePerUnit);
         }
-
         await db.SaveChangesAsync();
     }
 
@@ -170,7 +166,7 @@ public class WarehouseService
         if (w == null) return;
         var mat = await db.Materials.FindAsync(w.MaterialId);
         if (mat == null) return;
-        if (mat.CurrentStock < w.Quantity) throw new Exception($"موجودی کافی نیست");
+        if (mat.CurrentStock < w.Quantity) throw new Exception("موجودی کافی نیست");
         mat.CurrentStock -= w.Quantity;
         w.Status = WithdrawalStatus.Approved; w.ApprovedByUserId = userId; w.ApprovedByUsername = username; w.ApprovedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
@@ -191,7 +187,6 @@ public class WarehouseService
         var alerts = new List<StockAlert>();
         var materials = await db.Materials.Include(m => m.Unit).Where(m => m.IsActive).ToListAsync();
         var now = DateTime.UtcNow; var soon = now.AddDays(7);
-
         foreach (var mat in materials)
         {
             if (!string.IsNullOrWhiteSpace(search) && !mat.Name.Contains(search, StringComparison.OrdinalIgnoreCase) && !mat.Code.Contains(search, StringComparison.OrdinalIgnoreCase)) continue;
@@ -256,18 +251,13 @@ public class WarehouseService
         await using var db = await _factory.CreateDbContextAsync();
         var existing = await db.Recipes.Include(r => r.Ingredients).FirstOrDefaultAsync(r => r.Id == recipe.Id);
         if (existing == null) return;
-        existing.Name               = recipe.Name;
-        existing.Notes              = recipe.Notes;
-        existing.BakingLossPercent  = recipe.BakingLossPercent;
-        existing.PieceWeightGrams   = recipe.PieceWeightGrams;
-        existing.IsActive           = recipe.IsActive;
-        // replace ingredients
+        existing.Name              = recipe.Name;
+        existing.Notes             = recipe.Notes;
+        existing.BakingLossPercent = recipe.BakingLossPercent;
+        existing.PieceWeightGrams  = recipe.PieceWeightGrams;
+        existing.IsActive          = recipe.IsActive;
         db.RecipeIngredients.RemoveRange(existing.Ingredients);
-        foreach (var ing in recipe.Ingredients)
-        {
-            ing.Id       = 0;
-            ing.RecipeId = existing.Id;
-        }
+        foreach (var ing in recipe.Ingredients) { ing.Id = 0; ing.RecipeId = existing.Id; }
         existing.Ingredients = recipe.Ingredients;
         await db.SaveChangesAsync();
     }
@@ -279,7 +269,8 @@ public class WarehouseService
         if (r != null) { r.IsActive = false; await db.SaveChangesAsync(); }
     }
 
-    // محاسبه هزینه رسپی بر اساس میانگین وزنی قیمت مواد
+    // محاسبه هزینه رسپی — مقدار مواد بر اساس BaseUnitName ماده وارد می‌شود
+    // مثال: آرد → BaseQuantity=40 (kg/گونی) → قیمت هر kg = قیمت گونی ÷ 40
     public async Task<RecipeCostResult> CalculateRecipeCostAsync(Recipe recipe, decimal profitPercent = 0)
     {
         await using var db = await _factory.CreateDbContextAsync();
@@ -289,43 +280,50 @@ public class WarehouseService
 
         foreach (var ing in recipe.Ingredients)
         {
-            // میانگین وزنی قیمت: Σ(qty×price)/Σqty از StockEntries
+            // میانگین وزنی قیمت per stock-unit از StockEntries
             var entries = await db.StockEntries
                 .Where(e => e.MaterialId == ing.MaterialId)
                 .ToListAsync();
 
-            decimal avgPrice;
+            decimal avgPricePerStockUnit;
             if (entries.Any())
             {
                 var totalQty   = entries.Sum(e => e.Quantity);
                 var totalValue = entries.Sum(e => e.Quantity * e.PricePerUnit);
-                avgPrice = totalQty > 0 ? totalValue / totalQty : 0;
+                avgPricePerStockUnit = totalQty > 0 ? totalValue / totalQty : 0;
             }
             else
             {
                 var mat = await db.Materials.FindAsync(ing.MaterialId);
-                avgPrice = mat?.PricePerUnit ?? 0;
+                avgPricePerStockUnit = mat?.PricePerUnit ?? 0;
             }
 
-            var lineCost = ing.Quantity * avgPrice;
+            // ضریب تبدیل: چند واحد پایه در هر واحد انبار
+            var material = await db.Materials.FindAsync(ing.MaterialId);
+            var baseQty  = (material?.BaseQuantity ?? 1);
+            if (baseQty <= 0) baseQty = 1;
+
+            // قیمت هر واحد پایه (مثلاً هر کیلو)
+            decimal pricePerBase = avgPricePerStockUnit / baseQty;
+
+            // هزینه این قلم = مقدار (بر اساس واحد پایه) × قیمت هر واحد پایه
+            var lineCost = ing.Quantity * pricePerBase;
             if (ing.IsTopping) toppingCost += lineCost;
             else               mainCost    += lineCost;
         }
 
         decimal totalRaw = mainCost + toppingCost;
 
-        // افت پخت: هزینه خام / (1 - افت%)
+        // افت پخت
         decimal afterLoss = recipe.BakingLossPercent > 0 && recipe.BakingLossPercent < 100
             ? totalRaw / (1 - recipe.BakingLossPercent / 100)
             : totalRaw;
 
-        // هزینه هر کیلو (فرض: مواد بر اساس کیلوگرم)
-        // جمع کل مقدار مواد اصلی (بدون روکاری) برای محاسبه وزن نهایی
-        decimal totalMainWeightKg = recipe.Ingredients
-            .Where(i => !i.IsTopping)
-            .Sum(i => i.Quantity);
+        // جمع وزن مواد اصلی در واحد پایه (برای محاسبه هزینه/کیلو)
+        // اگر واحد پایه کیلوگرم باشد مستقیم جمع می‌شود؛ در غیر این صورت کاربر باید واحد یکسان بزند
+        decimal totalMainWeight = recipe.Ingredients.Where(i => !i.IsTopping).Sum(i => i.Quantity);
 
-        decimal costPerKg    = totalMainWeightKg > 0 ? afterLoss / totalMainWeightKg : 0;
+        decimal costPerKg    = totalMainWeight > 0 ? afterLoss / totalMainWeight : 0;
         decimal costPerPiece = recipe.PieceWeightGrams > 0
             ? costPerKg * (recipe.PieceWeightGrams / 1000m)
             : 0;
@@ -348,7 +346,6 @@ public class WarehouseService
     }
 }
 
-// نتیجه محاسبه قیمت رسپی
 public class RecipeCostResult
 {
     public decimal MainIngredientCost   { get; set; }

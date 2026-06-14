@@ -62,6 +62,10 @@ public class Material
     public string Notes { get; set; } = "";
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    // ── تبدیل واحد ──
+    // مثال: ۱ گونی = ۴۰ کیلوگرم → BaseQuantity=40, BaseUnitName="کیلوگرم"
+    public decimal BaseQuantity { get; set; } = 1;
+    public string BaseUnitName { get; set; } = "کیلوگرم";
     public List<StockEntry> Entries { get; set; } = new();
     public List<StockWithdrawal> Withdrawals { get; set; } = new();
 }
@@ -116,14 +120,13 @@ public class StockAlert
 
 public enum AlertType { LowStock, Expiring, Expired }
 
-// ── Recipe ──
 public class Recipe
 {
     public int Id { get; set; }
     public string Name { get; set; } = "";
     public string Notes { get; set; } = "";
-    public decimal BakingLossPercent { get; set; } = 0;   // درصد افت پخت
-    public decimal PieceWeightGrams { get; set; } = 0;    // وزن هر دانه (گرم)
+    public decimal BakingLossPercent { get; set; } = 0;
+    public decimal PieceWeightGrams { get; set; } = 0;
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public List<RecipeIngredient> Ingredients { get; set; } = new();
@@ -136,6 +139,6 @@ public class RecipeIngredient
     public Recipe? Recipe { get; set; }
     public int MaterialId { get; set; }
     public Material? Material { get; set; }
-    public decimal Quantity { get; set; }    // مقدار (بر اساس واحد ماده)
-    public bool IsTopping { get; set; }      // روکاری؟
+    public decimal Quantity { get; set; }   // مقدار بر اساس BaseUnitName ماده
+    public bool IsTopping { get; set; }
 }

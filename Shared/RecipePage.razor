@@ -12,7 +12,6 @@
 
 @if (!showForm)
 {
-    <!-- لیست رسپی‌ها -->
     @if (recipes == null)
     {
         <p>در حال بارگذاری...</p>
@@ -27,13 +26,8 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>نام رسپی</th>
-                        <th>تعداد مواد</th>
-                        <th>افت پخت %</th>
-                        <th>وزن دانه (گ)</th>
-                        <th>هزینه/کیلو</th>
-                        <th>یادداشت</th>
-                        <th>عملیات</th>
+                        <th>نام رسپی</th><th>تعداد مواد</th><th>افت پخت %</th>
+                        <th>وزن دانه (گ)</th><th>هزینه/کیلو</th><th>یادداشت</th><th>عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -63,7 +57,6 @@
 }
 else
 {
-    <!-- فرم ایجاد/ویرایش رسپی -->
     <div class="form-card">
         <h3>@(editId == 0 ? "رسپی جدید" : "ویرایش رسپی")</h3>
 
@@ -91,15 +84,17 @@ else
             <div class="section-title">🌾 مواد اصلی</div>
             @foreach (var ing in mainIngredients)
             {
+                var mat = materials.FirstOrDefault(m => m.Id == ing.MaterialId);
                 <div class="ingredient-row">
                     <select class="form-control" @bind="ing.MaterialId">
                         <option value="0">انتخاب ماده...</option>
                         @foreach (var m in materials)
                         {
-                            <option value="@m.Id">@m.Name (@m.Unit?.Name)</option>
+                            <option value="@m.Id">@m.Name (@m.Unit?.Name — @m.BaseQuantity @m.BaseUnitName/واحد)</option>
                         }
                     </select>
-                    <input class="form-control qty-input" type="number" @bind="ing.Quantity" min="0" step="0.001" placeholder="مقدار (kg)" />
+                    <input class="form-control qty-input" type="number" @bind="ing.Quantity" min="0" step="0.001" />
+                    <span class="unit-label">@(mat != null ? mat.BaseUnitName : "واحد")</span>
                     <button class="btn btn-sm btn-danger" @onclick="()=>mainIngredients.Remove(ing)">✕</button>
                 </div>
             }
@@ -111,15 +106,17 @@ else
             <div class="section-title">🍫 روکاری (Topping)</div>
             @foreach (var ing in toppingIngredients)
             {
+                var mat = materials.FirstOrDefault(m => m.Id == ing.MaterialId);
                 <div class="ingredient-row">
                     <select class="form-control" @bind="ing.MaterialId">
                         <option value="0">انتخاب ماده...</option>
                         @foreach (var m in materials)
                         {
-                            <option value="@m.Id">@m.Name (@m.Unit?.Name)</option>
+                            <option value="@m.Id">@m.Name (@m.Unit?.Name — @m.BaseQuantity @m.BaseUnitName/واحد)</option>
                         }
                     </select>
-                    <input class="form-control qty-input" type="number" @bind="ing.Quantity" min="0" step="0.001" placeholder="مقدار (kg)" />
+                    <input class="form-control qty-input" type="number" @bind="ing.Quantity" min="0" step="0.001" />
+                    <span class="unit-label">@(mat != null ? mat.BaseUnitName : "واحد")</span>
                     <button class="btn btn-sm btn-danger" @onclick="()=>toppingIngredients.Remove(ing)">✕</button>
                 </div>
             }
@@ -186,28 +183,25 @@ else
                 <span>%</span>
                 <button class="btn btn-primary btn-sm" @onclick="RecalcProfit">محاسبه</button>
             </div>
-            @if (calcResult.ProfitPercent >= 0)
-            {
-                <div class="profit-results">
-                    <div class="profit-box">
-                        <div class="profit-label">قیمت فروش / کیلو</div>
-                        <div class="profit-value">@calcResult.SellingPricePerKg.ToString("N0") ریال</div>
-                        <div class="profit-sub">(@(calcResult.SellingPricePerKg/10).ToString("N0") تومان)</div>
-                    </div>
-                    @if (calcRecipe.PieceWeightGrams > 0)
-                    {
-                        <div class="profit-box">
-                            <div class="profit-label">قیمت فروش / دانه</div>
-                            <div class="profit-value">@calcResult.SellingPricePerPiece.ToString("N0") ریال</div>
-                            <div class="profit-sub">(@(calcResult.SellingPricePerPiece/10).ToString("N0") تومان)</div>
-                        </div>
-                    }
-                    <div class="profit-box profit-amount">
-                        <div class="profit-label">سود / کیلو</div>
-                        <div class="profit-value">@((calcResult.SellingPricePerKg - calcResult.CostPerKg).ToString("N0")) ریال</div>
-                    </div>
+            <div class="profit-results">
+                <div class="profit-box">
+                    <div class="profit-label">قیمت فروش / کیلو</div>
+                    <div class="profit-value">@calcResult.SellingPricePerKg.ToString("N0") ریال</div>
+                    <div class="profit-sub">(@(calcResult.SellingPricePerKg/10).ToString("N0") تومان)</div>
                 </div>
-            }
+                @if (calcRecipe.PieceWeightGrams > 0)
+                {
+                    <div class="profit-box">
+                        <div class="profit-label">قیمت فروش / دانه</div>
+                        <div class="profit-value">@calcResult.SellingPricePerPiece.ToString("N0") ریال</div>
+                        <div class="profit-sub">(@(calcResult.SellingPricePerPiece/10).ToString("N0") تومان)</div>
+                    </div>
+                }
+                <div class="profit-box profit-amount">
+                    <div class="profit-label">سود / کیلو</div>
+                    <div class="profit-value">@((calcResult.SellingPricePerKg - calcResult.CostPerKg).ToString("N0")) ریال</div>
+                </div>
+            </div>
         </div>
 
         <!-- جزئیات مواد -->
@@ -215,7 +209,7 @@ else
             <h4>📋 جزئیات مواد</h4>
             <table class="data-table">
                 <thead>
-                    <tr><th>ماده</th><th>نوع</th><th>مقدار</th><th>واحد</th></tr>
+                    <tr><th>ماده</th><th>نوع</th><th>مقدار</th><th>واحد پایه</th><th>واحد انبار</th><th>ضریب</th></tr>
                 </thead>
                 <tbody>
                     @foreach (var ing in calcRecipe.Ingredients)
@@ -224,7 +218,9 @@ else
                             <td>@ing.Material?.Name</td>
                             <td>@(ing.IsTopping ? "روکاری" : "اصلی")</td>
                             <td>@ing.Quantity.ToString("N3")</td>
+                            <td>@ing.Material?.BaseUnitName</td>
                             <td>@ing.Material?.Unit?.Name</td>
+                            <td>@ing.Material?.BaseQuantity</td>
                         </tr>
                     }
                 </tbody>
@@ -243,7 +239,7 @@ else
     int    editId;
     string errorMsg = "";
 
-    Recipe           form             = new();
+    Recipe                 form              = new();
     List<RecipeIngredient> mainIngredients    = new();
     List<RecipeIngredient> toppingIngredients = new();
 
@@ -281,21 +277,25 @@ else
 
     void EditRecipe(Recipe r)
     {
-        form               = new Recipe { Id=r.Id, Name=r.Name, Notes=r.Notes, BakingLossPercent=r.BakingLossPercent, PieceWeightGrams=r.PieceWeightGrams };
+        form = new Recipe
+        {
+            Id=r.Id, Name=r.Name, Notes=r.Notes,
+            BakingLossPercent=r.BakingLossPercent, PieceWeightGrams=r.PieceWeightGrams
+        };
         mainIngredients    = r.Ingredients.Where(i=>!i.IsTopping).Select(i=>new RecipeIngredient{MaterialId=i.MaterialId,Quantity=i.Quantity,IsTopping=false}).ToList();
         toppingIngredients = r.Ingredients.Where(i=>i.IsTopping ).Select(i=>new RecipeIngredient{MaterialId=i.MaterialId,Quantity=i.Quantity,IsTopping=true }).ToList();
-        editId             = r.Id;
-        errorMsg           = "";
-        showForm           = true;
-        showCalc           = false;
+        editId   = r.Id;
+        errorMsg = "";
+        showForm = true;
+        showCalc = false;
     }
 
     async Task ViewRecipe(Recipe r)
     {
-        calcRecipe  = r;
-        calcResult  = await Warehouse.CalculateRecipeCostAsync(r, profitPercent);
-        showCalc    = true;
-        showForm    = false;
+        calcRecipe = r;
+        calcResult = await Warehouse.CalculateRecipeCostAsync(r, profitPercent);
+        showCalc   = true;
+        showForm   = false;
     }
 
     async Task RecalcProfit()
@@ -333,7 +333,7 @@ else
         await LoadRecipes();
     }
 
-    void Cancel()  { showForm = false; errorMsg = ""; }
+    void Cancel()     { showForm = false; errorMsg = ""; }
     void AddMain()    => mainIngredients.Add(new RecipeIngredient { IsTopping = false });
     void AddTopping() => toppingIngredients.Add(new RecipeIngredient { IsTopping = true });
 }

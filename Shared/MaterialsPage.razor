@@ -27,11 +27,27 @@
                 </select>
             </div>
             <div class="form-group">
-                <label>واحد *</label>
+                <label>واحد انبار *</label>
                 <select @bind="fUnitId" class="form-input">
                     <option value="">انتخاب کنید...</option>
                     @foreach (var u in units) { <option value="@u.Id">@u.Name</option> }
                 </select>
+            </div>
+            <div class="form-group">
+                <label>مقدار واحد پایه در هر واحد انبار *</label>
+                <input @bind="fBaseQuantity" type="number" step="0.001" min="0.001" class="form-input" placeholder="مثال: ۴۰" />
+                <small class="form-hint">مثال: ۱ گونی = ۴۰ کیلوگرم → عدد ۴۰ را وارد کنید</small>
+            </div>
+            <div class="form-group">
+                <label>واحد پایه (برای رسپی) *</label>
+                <select @bind="fBaseUnitName" class="form-input">
+                    <option value="کیلوگرم">کیلوگرم</option>
+                    <option value="گرم">گرم</option>
+                    <option value="لیتر">لیتر</option>
+                    <option value="میلی‌لیتر">میلی‌لیتر</option>
+                    <option value="عدد">عدد</option>
+                </select>
+                <small class="form-hint">در رسپی مقدار را بر اساس این واحد وارد می‌کنید</small>
             </div>
             <div class="form-group"><label>حد هشدار موجودی</label><input @bind="fMinStock" type="number" step="0.01" class="form-input" /></div>
             <div class="form-group">
@@ -43,7 +59,10 @@
             </div>
             <div class="form-group"><label>توضیحات</label><input @bind="fNotes" class="form-input" /></div>
         </div>
-        <div class="form-note">💡 قیمت در زمان ورود به انبار ثبت می‌شود و میانگین موزون محاسبه خواهد شد.</div>
+        <div class="form-note">
+            💡 قیمت در زمان ورود به انبار ثبت می‌شود و میانگین موزون محاسبه خواهد شد.<br/>
+            📐 <strong>مثال:</strong> آرد با واحد انبار «گونی» (۴۰ کیلوگرم) → در رسپی ۰.۳۵ کیلوگرم = ۳۵۰ گرم وارد کنید.
+        </div>
         @if (!string.IsNullOrEmpty(err)) { <div class="alert alert-error">@err</div> }
         <div class="form-actions">
             <button class="btn btn-primary" @onclick="Save">💾 ذخیره</button>
@@ -55,8 +74,12 @@
 <div class="table-responsive">
     <table class="data-table">
         <thead>
-            <tr><th>کد</th><th>نام</th><th>گروه</th><th>واحد</th><th>موجودی</th><th>هشدار</th><th>تأمین‌کننده</th><th>وضعیت</th>
-            @if (Auth.IsManager) { <th></th> }</tr>
+            <tr>
+                <th>کد</th><th>نام</th><th>گروه</th><th>واحد انبار</th>
+                <th>ضریب تبدیل</th><th>واحد پایه</th>
+                <th>موجودی</th><th>هشدار</th><th>تأمین‌کننده</th><th>وضعیت</th>
+                @if (Auth.IsManager) { <th></th> }
+            </tr>
         </thead>
         <tbody>
             @foreach (var m in materials)
@@ -66,6 +89,13 @@
                     <td><strong>@m.Name</strong></td>
                     <td>@(m.Group?.Name??"-")</td>
                     <td>@(m.Unit?.Name??"-")</td>
+                    <td class="text-center">
+                        @if (m.BaseQuantity != 1)
+                        { <span class="conversion-badge">@m.BaseQuantity @m.BaseUnitName / واحد</span> }
+                        else
+                        { <span class="text-muted">@m.BaseQuantity</span> }
+                    </td>
+                    <td>@m.BaseUnitName</td>
                     <td>@m.CurrentStock.ToString("N2")</td>
                     <td>@m.MinStockLevel.ToString("N2")</td>
                     <td>@(m.Supplier?.Name??"-")</td>
@@ -91,8 +121,9 @@
     List<Material> materials=new(); List<Supplier> suppliers=new();
     List<Unit> units=new(); List<MaterialGroup> groups=new();
     bool showForm; int? editId; string search="";
-    string fCode="",fName="",fNotes="",err="";
-    decimal fMinStock=0; int? fSupplierId, fUnitId, fGroupId;
+    string fCode="",fName="",fNotes="",fBaseUnitName="کیلوگرم",err="";
+    decimal fMinStock=0, fBaseQuantity=1;
+    int? fSupplierId, fUnitId, fGroupId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -104,22 +135,50 @@
 
     async Task OnSearch(ChangeEventArgs e) { search=e.Value?.ToString()??""; materials=await Warehouse.GetMaterialsAsync(search); }
 
-    void ShowAdd() { editId=null; fCode=fName=fNotes=err=""; fMinStock=0; fSupplierId=fUnitId=fGroupId=null; showForm=true; }
-    void Edit(Material m) { editId=m.Id; fCode=m.Code; fName=m.Name; fMinStock=m.MinStockLevel; fSupplierId=m.SupplierId; fUnitId=m.UnitId; fGroupId=m.GroupId; fNotes=m.Notes; err=""; showForm=true; }
+    void ShowAdd()
+    {
+        editId=null; fCode=fName=fNotes=err="";
+        fMinStock=0; fBaseQuantity=1; fBaseUnitName="کیلوگرم";
+        fSupplierId=fUnitId=fGroupId=null; showForm=true;
+    }
+
+    void Edit(Material m)
+    {
+        editId=m.Id; fCode=m.Code; fName=m.Name; fMinStock=m.MinStockLevel;
+        fSupplierId=m.SupplierId; fUnitId=m.UnitId; fGroupId=m.GroupId;
+        fNotes=m.Notes; fBaseQuantity=m.BaseQuantity; fBaseUnitName=m.BaseUnitName;
+        err=""; showForm=true;
+    }
 
     async Task Save()
     {
         err="";
         if (string.IsNullOrWhiteSpace(fCode)) { err="کد ماده اجباری است"; return; }
         if (string.IsNullOrWhiteSpace(fName)) { err="نام ماده اجباری است"; return; }
+        if (fBaseQuantity <= 0) { err="ضریب تبدیل باید بزرگتر از صفر باشد"; return; }
         if (await Warehouse.CodeExistsAsync(fCode, editId)) { err=$"کد {fCode} قبلاً ثبت شده"; return; }
         if (editId.HasValue)
         {
             var m = await Warehouse.GetMaterialAsync(editId.Value);
-            if (m!=null) { m.Code=fCode; m.Name=fName; m.GroupId=fGroupId; m.UnitId=fUnitId; m.MinStockLevel=fMinStock; m.SupplierId=fSupplierId; m.Notes=fNotes; await Warehouse.UpdateMaterialAsync(m); }
+            if (m!=null)
+            {
+                m.Code=fCode; m.Name=fName; m.GroupId=fGroupId; m.UnitId=fUnitId;
+                m.MinStockLevel=fMinStock; m.SupplierId=fSupplierId; m.Notes=fNotes;
+                m.BaseQuantity=fBaseQuantity; m.BaseUnitName=fBaseUnitName;
+                await Warehouse.UpdateMaterialAsync(m);
+            }
         }
-        else await Warehouse.AddMaterialAsync(new Material { Code=fCode, Name=fName, GroupId=fGroupId, UnitId=fUnitId, MinStockLevel=fMinStock, SupplierId=fSupplierId, Notes=fNotes });
+        else
+        {
+            await Warehouse.AddMaterialAsync(new Material
+            {
+                Code=fCode, Name=fName, GroupId=fGroupId, UnitId=fUnitId,
+                MinStockLevel=fMinStock, SupplierId=fSupplierId, Notes=fNotes,
+                BaseQuantity=fBaseQuantity, BaseUnitName=fBaseUnitName
+            });
+        }
         showForm=false; materials=await Warehouse.GetMaterialsAsync(search);
     }
+
     async Task Delete(int id) { await Warehouse.DeleteMaterialAsync(id); materials=await Warehouse.GetMaterialsAsync(search); }
 }

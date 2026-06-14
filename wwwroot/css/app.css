@@ -481,3 +481,8 @@ code { background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:.78rem;
 
 .price-badge { background: #e0e7ff; color: #3730a3; padding: 2px 8px; border-radius: 12px; font-size: .82rem; font-weight: 600; }
 .ingredients-detail { margin-top: 1rem; }
+
+.unit-label { min-width: 60px; font-size: .85rem; color: #666; font-weight: 600; padding: 0 4px; }
+.conversion-badge { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 12px; font-size: .8rem; }
+.form-hint { display: block; font-size: .78rem; color: #888; margin-top: 3px; }
+

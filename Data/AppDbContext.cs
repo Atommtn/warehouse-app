@@ -31,6 +31,7 @@ public class AppDbContext : DbContext
         m.Entity<Material>().Property(x => x.PricePerUnit).HasColumnType("decimal(18,2)");
         m.Entity<Material>().Property(x => x.MinStockLevel).HasColumnType("decimal(18,2)");
         m.Entity<Material>().Property(x => x.CurrentStock).HasColumnType("decimal(18,2)");
+        m.Entity<Material>().Property(x => x.BaseQuantity).HasColumnType("decimal(10,3)");
         m.Entity<StockEntry>().Property(x => x.Quantity).HasColumnType("decimal(18,2)");
         m.Entity<StockEntry>().Property(x => x.PricePerUnit).HasColumnType("decimal(18,2)");
         m.Entity<StockWithdrawal>().Property(x => x.Quantity).HasColumnType("decimal(18,2)");
