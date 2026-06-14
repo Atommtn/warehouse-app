@@ -115,3 +115,27 @@ public class StockAlert
 }
 
 public enum AlertType { LowStock, Expiring, Expired }
+
+// ── Recipe ──
+public class Recipe
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Notes { get; set; } = "";
+    public decimal BakingLossPercent { get; set; } = 0;   // درصد افت پخت
+    public decimal PieceWeightGrams { get; set; } = 0;    // وزن هر دانه (گرم)
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<RecipeIngredient> Ingredients { get; set; } = new();
+}
+
+public class RecipeIngredient
+{
+    public int Id { get; set; }
+    public int RecipeId { get; set; }
+    public Recipe? Recipe { get; set; }
+    public int MaterialId { get; set; }
+    public Material? Material { get; set; }
+    public decimal Quantity { get; set; }    // مقدار (بر اساس واحد ماده)
+    public bool IsTopping { get; set; }      // روکاری؟
+}

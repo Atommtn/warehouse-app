@@ -56,6 +56,7 @@
             }
             <li class="@A("history")">   <button @onclick='()=>Go("history")'>📋 تاریخچه</button></li>
             <li class="@A("prices")">    <button @onclick='()=>Go("prices")'>📈 تحلیل قیمت</button></li>
+            <li class="@A("recipes")">   <button @onclick='()=>Go("recipes")'>🧁 رسپی‌ها</button></li>
             <li class="@A("alerts")">
                 <button @onclick='()=>Go("alerts")'>
                     🔔 هشدارها
@@ -75,15 +76,16 @@
     </nav>
 
     <main class="main-content" @onclick="CloseSidebar">
-        @if (page == "dashboard")                          { <DashboardPage /> }
-        else if (page == "materials")                      { <MaterialsPage /> }
-        else if (page == "definitions")                    { <DefinitionsPage DefaultTab="@defsTab" /> }
-        else if (page == "entry"      && Auth.IsManager)   { <StockEntryPage /> }
-        else if (page == "withdrawal" && Auth.IsAttendant) { <WithdrawalPage /> }
-        else if (page == "history")                        { <HistoryPage /> }
-        else if (page == "prices")                         { <PriceAnalysisPage /> }
-        else if (page == "alerts")                         { <AlertsPage /> }
-        else if (page == "users"      && Auth.IsAdmin)     { <UsersPage /> }
+        @if      (page == "dashboard")                       { <DashboardPage /> }
+        else if  (page == "materials")                       { <MaterialsPage /> }
+        else if  (page == "definitions") { <DefinitionsPage DefaultTab="@defsTab" /> }
+        else if  (page == "entry"      && Auth.IsManager)    { <StockEntryPage /> }
+        else if  (page == "withdrawal" && Auth.IsAttendant)  { <WithdrawalPage /> }
+        else if  (page == "history")                         { <HistoryPage /> }
+        else if  (page == "prices")                          { <PriceAnalysisPage /> }
+        else if  (page == "recipes")                         { <RecipePage /> }
+        else if  (page == "alerts")                          { <AlertsPage /> }
+        else if  (page == "users"      && Auth.IsAdmin)      { <UsersPage /> }
     </main>
 </div>
 

@@ -14,6 +14,8 @@ public class AppDbContext : DbContext
     public DbSet<Material> Materials => Set<Material>();
     public DbSet<StockEntry> StockEntries => Set<StockEntry>();
     public DbSet<StockWithdrawal> StockWithdrawals => Set<StockWithdrawal>();
+    public DbSet<Recipe> Recipes => Set<Recipe>();
+    public DbSet<RecipeIngredient> RecipeIngredients => Set<RecipeIngredient>();
 
     protected override void OnModelCreating(ModelBuilder m)
     {
@@ -22,6 +24,8 @@ public class AppDbContext : DbContext
         m.Entity<Unit>().HasMany(x => x.Materials).WithOne(mat => mat.Unit).HasForeignKey(mat => mat.UnitId);
         m.Entity<MaterialGroup>().HasMany(x => x.Materials).WithOne(mat => mat.Group).HasForeignKey(mat => mat.GroupId);
         m.Entity<Supplier>().HasMany(x => x.Materials).WithOne(mat => mat.Supplier).HasForeignKey(mat => mat.SupplierId);
+        m.Entity<Recipe>().HasMany(x => x.Ingredients).WithOne(i => i.Recipe).HasForeignKey(i => i.RecipeId).OnDelete(DeleteBehavior.Cascade);
+        m.Entity<RecipeIngredient>().HasOne(x => x.Material).WithMany().HasForeignKey(x => x.MaterialId);
 
         m.Entity<Material>().HasIndex(x => x.Code).IsUnique();
         m.Entity<Material>().Property(x => x.PricePerUnit).HasColumnType("decimal(18,2)");
@@ -30,6 +34,9 @@ public class AppDbContext : DbContext
         m.Entity<StockEntry>().Property(x => x.Quantity).HasColumnType("decimal(18,2)");
         m.Entity<StockEntry>().Property(x => x.PricePerUnit).HasColumnType("decimal(18,2)");
         m.Entity<StockWithdrawal>().Property(x => x.Quantity).HasColumnType("decimal(18,2)");
+        m.Entity<Recipe>().Property(x => x.BakingLossPercent).HasColumnType("decimal(5,2)");
+        m.Entity<Recipe>().Property(x => x.PieceWeightGrams).HasColumnType("decimal(10,2)");
+        m.Entity<RecipeIngredient>().Property(x => x.Quantity).HasColumnType("decimal(18,3)");
     }
 }
 

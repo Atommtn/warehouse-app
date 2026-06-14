@@ -1,0 +1,339 @@
+@using WarehouseApp.Services
+@using WarehouseApp.Models
+@inject WarehouseService Warehouse
+
+<div class="page-header">
+    <h2>🧁 رسپی‌ها</h2>
+    @if (!showForm)
+    {
+        <button class="btn btn-primary" @onclick="NewRecipe">+ رسپی جدید</button>
+    }
+</div>
+
+@if (!showForm)
+{
+    <!-- لیست رسپی‌ها -->
+    @if (recipes == null)
+    {
+        <p>در حال بارگذاری...</p>
+    }
+    else if (!recipes.Any())
+    {
+        <div class="empty-state">هنوز رسپی‌ای ثبت نشده.</div>
+    }
+    else
+    {
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>نام رسپی</th>
+                        <th>تعداد مواد</th>
+                        <th>افت پخت %</th>
+                        <th>وزن دانه (گ)</th>
+                        <th>هزینه/کیلو</th>
+                        <th>یادداشت</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in recipes)
+                    {
+                        <tr>
+                            <td>@r.Name</td>
+                            <td>@r.Ingredients.Count</td>
+                            <td>@r.BakingLossPercent%</td>
+                            <td>@(r.PieceWeightGrams > 0 ? r.PieceWeightGrams.ToString("N0") : "-")</td>
+                            <td>
+                                @if (costCache.TryGetValue(r.Id, out var cr))
+                                { <span class="price-badge">@cr.CostPerKg.ToString("N0") ریال</span> }
+                            </td>
+                            <td>@r.Notes</td>
+                            <td>
+                                <button class="btn btn-sm btn-info"    @onclick="()=>ViewRecipe(r)">📊 محاسبه</button>
+                                <button class="btn btn-sm btn-warning" @onclick="()=>EditRecipe(r)">✏️</button>
+                                <button class="btn btn-sm btn-danger"  @onclick="()=>DeleteRecipe(r.Id)">🗑️</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+else
+{
+    <!-- فرم ایجاد/ویرایش رسپی -->
+    <div class="form-card">
+        <h3>@(editId == 0 ? "رسپی جدید" : "ویرایش رسپی")</h3>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>نام رسپی *</label>
+                <input class="form-control" @bind="form.Name" placeholder="مثال: کیک شکلاتی" />
+            </div>
+            <div class="form-group">
+                <label>افت پخت (%)</label>
+                <input class="form-control" type="number" @bind="form.BakingLossPercent" min="0" max="99" step="0.5" />
+            </div>
+            <div class="form-group">
+                <label>وزن هر دانه (گرم)</label>
+                <input class="form-control" type="number" @bind="form.PieceWeightGrams" min="0" step="1" />
+            </div>
+        </div>
+        <div class="form-group">
+            <label>یادداشت</label>
+            <input class="form-control" @bind="form.Notes" />
+        </div>
+
+        <!-- مواد اصلی -->
+        <div class="ingredient-section">
+            <div class="section-title">🌾 مواد اصلی</div>
+            @foreach (var ing in mainIngredients)
+            {
+                <div class="ingredient-row">
+                    <select class="form-control" @bind="ing.MaterialId">
+                        <option value="0">انتخاب ماده...</option>
+                        @foreach (var m in materials)
+                        {
+                            <option value="@m.Id">@m.Name (@m.Unit?.Name)</option>
+                        }
+                    </select>
+                    <input class="form-control qty-input" type="number" @bind="ing.Quantity" min="0" step="0.001" placeholder="مقدار (kg)" />
+                    <button class="btn btn-sm btn-danger" @onclick="()=>mainIngredients.Remove(ing)">✕</button>
+                </div>
+            }
+            <button class="btn btn-sm btn-outline" @onclick="AddMain">+ افزودن ماده</button>
+        </div>
+
+        <!-- روکاری -->
+        <div class="ingredient-section">
+            <div class="section-title">🍫 روکاری (Topping)</div>
+            @foreach (var ing in toppingIngredients)
+            {
+                <div class="ingredient-row">
+                    <select class="form-control" @bind="ing.MaterialId">
+                        <option value="0">انتخاب ماده...</option>
+                        @foreach (var m in materials)
+                        {
+                            <option value="@m.Id">@m.Name (@m.Unit?.Name)</option>
+                        }
+                    </select>
+                    <input class="form-control qty-input" type="number" @bind="ing.Quantity" min="0" step="0.001" placeholder="مقدار (kg)" />
+                    <button class="btn btn-sm btn-danger" @onclick="()=>toppingIngredients.Remove(ing)">✕</button>
+                </div>
+            }
+            <button class="btn btn-sm btn-outline" @onclick="AddTopping">+ افزودن روکاری</button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorMsg))
+        {
+            <div class="alert alert-danger">@errorMsg</div>
+        }
+
+        <div class="form-actions">
+            <button class="btn btn-secondary" @onclick="Cancel">انصراف</button>
+            <button class="btn btn-primary" @onclick="SaveRecipe">💾 ذخیره</button>
+        </div>
+    </div>
+}
+
+<!-- پنل محاسبه قیمت -->
+@if (showCalc && calcRecipe != null && calcResult != null)
+{
+    <div class="calc-panel">
+        <div class="calc-header">
+            <h3>📊 محاسبه قیمت — @calcRecipe.Name</h3>
+            <button class="btn btn-sm btn-secondary" @onclick="()=>showCalc=false">✕ بستن</button>
+        </div>
+
+        <div class="calc-grid">
+            <div class="calc-box">
+                <div class="calc-label">هزینه مواد اصلی</div>
+                <div class="calc-value">@calcResult.MainIngredientCost.ToString("N0") ریال</div>
+            </div>
+            <div class="calc-box">
+                <div class="calc-label">هزینه روکاری</div>
+                <div class="calc-value">@calcResult.ToppingCost.ToString("N0") ریال</div>
+            </div>
+            <div class="calc-box highlight">
+                <div class="calc-label">جمع مواد خام</div>
+                <div class="calc-value">@calcResult.TotalRawCost.ToString("N0") ریال</div>
+            </div>
+            <div class="calc-box highlight">
+                <div class="calc-label">پس از افت پخت (@calcRecipe.BakingLossPercent%)</div>
+                <div class="calc-value">@calcResult.TotalAfterLoss.ToString("N0") ریال</div>
+            </div>
+            <div class="calc-box primary">
+                <div class="calc-label">هزینه هر کیلو</div>
+                <div class="calc-value">@calcResult.CostPerKg.ToString("N0") ریال</div>
+            </div>
+            @if (calcRecipe.PieceWeightGrams > 0)
+            {
+                <div class="calc-box primary">
+                    <div class="calc-label">هزینه هر دانه (@calcRecipe.PieceWeightGrams گرم)</div>
+                    <div class="calc-value">@calcResult.CostPerPiece.ToString("N0") ریال</div>
+                </div>
+            }
+        </div>
+
+        <!-- ماشین حساب سود -->
+        <div class="profit-calculator">
+            <h4>📈 محاسبه قیمت فروش</h4>
+            <div class="profit-row">
+                <label>درصد سود:</label>
+                <input type="number" class="form-control profit-input" @bind="profitPercent" min="0" max="500" step="1" />
+                <span>%</span>
+                <button class="btn btn-primary btn-sm" @onclick="RecalcProfit">محاسبه</button>
+            </div>
+            @if (calcResult.ProfitPercent >= 0)
+            {
+                <div class="profit-results">
+                    <div class="profit-box">
+                        <div class="profit-label">قیمت فروش / کیلو</div>
+                        <div class="profit-value">@calcResult.SellingPricePerKg.ToString("N0") ریال</div>
+                        <div class="profit-sub">(@(calcResult.SellingPricePerKg/10).ToString("N0") تومان)</div>
+                    </div>
+                    @if (calcRecipe.PieceWeightGrams > 0)
+                    {
+                        <div class="profit-box">
+                            <div class="profit-label">قیمت فروش / دانه</div>
+                            <div class="profit-value">@calcResult.SellingPricePerPiece.ToString("N0") ریال</div>
+                            <div class="profit-sub">(@(calcResult.SellingPricePerPiece/10).ToString("N0") تومان)</div>
+                        </div>
+                    }
+                    <div class="profit-box profit-amount">
+                        <div class="profit-label">سود / کیلو</div>
+                        <div class="profit-value">@((calcResult.SellingPricePerKg - calcResult.CostPerKg).ToString("N0")) ریال</div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- جزئیات مواد -->
+        <div class="ingredients-detail">
+            <h4>📋 جزئیات مواد</h4>
+            <table class="data-table">
+                <thead>
+                    <tr><th>ماده</th><th>نوع</th><th>مقدار</th><th>واحد</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var ing in calcRecipe.Ingredients)
+                    {
+                        <tr>
+                            <td>@ing.Material?.Name</td>
+                            <td>@(ing.IsTopping ? "روکاری" : "اصلی")</td>
+                            <td>@ing.Quantity.ToString("N3")</td>
+                            <td>@ing.Material?.Unit?.Name</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    List<Recipe>?  recipes;
+    List<Material> materials = new();
+    Dictionary<int, RecipeCostResult> costCache = new();
+
+    bool   showForm;
+    bool   showCalc;
+    int    editId;
+    string errorMsg = "";
+
+    Recipe           form             = new();
+    List<RecipeIngredient> mainIngredients    = new();
+    List<RecipeIngredient> toppingIngredients = new();
+
+    Recipe?           calcRecipe;
+    RecipeCostResult? calcResult;
+    decimal           profitPercent = 10;
+
+    protected override async Task OnInitializedAsync()
+    {
+        materials = await Warehouse.GetMaterialsAsync();
+        await LoadRecipes();
+    }
+
+    async Task LoadRecipes()
+    {
+        recipes = await Warehouse.GetRecipesAsync();
+        costCache.Clear();
+        foreach (var r in recipes)
+        {
+            try { costCache[r.Id] = await Warehouse.CalculateRecipeCostAsync(r); }
+            catch { }
+        }
+    }
+
+    void NewRecipe()
+    {
+        form               = new Recipe();
+        mainIngredients    = new();
+        toppingIngredients = new();
+        editId             = 0;
+        errorMsg           = "";
+        showForm           = true;
+        showCalc           = false;
+    }
+
+    void EditRecipe(Recipe r)
+    {
+        form               = new Recipe { Id=r.Id, Name=r.Name, Notes=r.Notes, BakingLossPercent=r.BakingLossPercent, PieceWeightGrams=r.PieceWeightGrams };
+        mainIngredients    = r.Ingredients.Where(i=>!i.IsTopping).Select(i=>new RecipeIngredient{MaterialId=i.MaterialId,Quantity=i.Quantity,IsTopping=false}).ToList();
+        toppingIngredients = r.Ingredients.Where(i=>i.IsTopping ).Select(i=>new RecipeIngredient{MaterialId=i.MaterialId,Quantity=i.Quantity,IsTopping=true }).ToList();
+        editId             = r.Id;
+        errorMsg           = "";
+        showForm           = true;
+        showCalc           = false;
+    }
+
+    async Task ViewRecipe(Recipe r)
+    {
+        calcRecipe  = r;
+        calcResult  = await Warehouse.CalculateRecipeCostAsync(r, profitPercent);
+        showCalc    = true;
+        showForm    = false;
+    }
+
+    async Task RecalcProfit()
+    {
+        if (calcRecipe != null)
+            calcResult = await Warehouse.CalculateRecipeCostAsync(calcRecipe, profitPercent);
+    }
+
+    async Task SaveRecipe()
+    {
+        errorMsg = "";
+        if (string.IsNullOrWhiteSpace(form.Name)) { errorMsg = "نام رسپی الزامی است."; return; }
+        var validMain = mainIngredients.Where(i=>i.MaterialId>0 && i.Quantity>0).ToList();
+        if (!validMain.Any()) { errorMsg = "حداقل یک ماده اصلی با مقدار معتبر وارد کنید."; return; }
+
+        form.Ingredients = validMain
+            .Concat(toppingIngredients.Where(i=>i.MaterialId>0 && i.Quantity>0))
+            .ToList();
+
+        if (editId == 0)
+            await Warehouse.AddRecipeAsync(form);
+        else
+        {
+            form.Id = editId;
+            await Warehouse.UpdateRecipeAsync(form);
+        }
+
+        showForm = false;
+        await LoadRecipes();
+    }
+
+    async Task DeleteRecipe(int id)
+    {
+        await Warehouse.DeleteRecipeAsync(id);
+        await LoadRecipes();
+    }
+
+    void Cancel()  { showForm = false; errorMsg = ""; }
+    void AddMain()    => mainIngredients.Add(new RecipeIngredient { IsTopping = false });
+    void AddTopping() => toppingIngredients.Add(new RecipeIngredient { IsTopping = true });
+}

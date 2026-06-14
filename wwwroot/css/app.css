@@ -431,6 +431,7 @@ code { background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:.78rem;
 
 
 
+
 /* Sub-menu (تعاریف اولیه) */
 .nav-parent { position:relative; }
 .nav-parent-btn {
@@ -451,3 +452,32 @@ code { background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:.78rem;
 }
 .nav-submenu li button:hover { background:var(--sidebar-hover); color:#fff; }
 .nav-submenu li.active button { background:var(--sidebar-active); color:#fff; font-weight:600; }
+
+/* ── Recipe Page ── */
+.ingredient-section { margin: 1rem 0; padding: 1rem; background: var(--surface-2, #f8f9fa); border-radius: 8px; }
+.section-title { font-weight: 600; font-size: 1rem; margin-bottom: .75rem; color: var(--primary, #4361ee); }
+.ingredient-row { display: flex; gap: .5rem; align-items: center; margin-bottom: .5rem; }
+.ingredient-row select { flex: 2; }
+.qty-input { flex: 1 !important; max-width: 120px; }
+
+.calc-panel { margin-top: 1.5rem; padding: 1.5rem; border: 2px solid var(--primary, #4361ee); border-radius: 12px; }
+.calc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.calc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.calc-box { padding: .75rem 1rem; border-radius: 8px; background: #f0f4ff; }
+.calc-box.highlight { background: #e0e7ff; }
+.calc-box.primary { background: var(--primary, #4361ee); color: #fff; }
+.calc-label { font-size: .78rem; opacity: .85; margin-bottom: .3rem; }
+.calc-value { font-size: 1.1rem; font-weight: 700; }
+
+.profit-calculator { padding: 1rem; background: #f8f9fa; border-radius: 8px; margin-bottom: 1rem; }
+.profit-row { display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.profit-input { max-width: 90px !important; }
+.profit-results { display: flex; gap: 1rem; flex-wrap: wrap; }
+.profit-box { flex: 1; min-width: 140px; padding: .75rem 1rem; border-radius: 8px; background: #e8f5e9; text-align: center; }
+.profit-box.profit-amount { background: #fff3e0; }
+.profit-label { font-size: .78rem; color: #555; margin-bottom: .3rem; }
+.profit-value { font-size: 1.1rem; font-weight: 700; color: #2e7d32; }
+.profit-sub { font-size: .75rem; color: #888; margin-top: .2rem; }
+
+.price-badge { background: #e0e7ff; color: #3730a3; padding: 2px 8px; border-radius: 12px; font-size: .82rem; font-weight: 600; }
+.ingredients-detail { margin-top: 1rem; }
