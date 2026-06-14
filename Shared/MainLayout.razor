@@ -77,7 +77,7 @@
     <main class="main-content" @onclick="CloseSidebar">
         @if (page == "dashboard")                          { <DashboardPage /> }
         else if (page == "materials")                      { <MaterialsPage /> }
-        else if (page == "definitions") { <DefinitionsPage DefaultTab="@defsTab" /> }
+        else if (page == "definitions")                    { <DefinitionsPage DefaultTab="@defsTab" /> }
         else if (page == "entry"      && Auth.IsManager)   { <StockEntryPage /> }
         else if (page == "withdrawal" && Auth.IsAttendant) { <WithdrawalPage /> }
         else if (page == "history")                        { <HistoryPage /> }
