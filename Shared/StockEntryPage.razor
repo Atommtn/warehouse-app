@@ -13,7 +13,7 @@
                 <label>ماده اولیه *</label>
                 <select value="@selId" @onchange="OnMaterialChange" class="form-input">
                     <option value="0">انتخاب کنید...</option>
-                    @foreach (var m in materials) { <option value="@m.Id">[@m.Code] @m.Name (@m.Unit)</option> }
+                    @foreach (var m in materials) { <option value="@m.Id">[@m.Code] @m.Name (@(m.Unit?.Name ?? ""))</option> }
                 </select>
             </div>
             <div class="form-group">
@@ -55,7 +55,7 @@ else
         <div class="form-grid">
             <div class="form-group">
                 <label>ماده اولیه</label>
-                <input value="[@editEntry!.Material?.Code] @editEntry!.Material?.Name" class="form-input" disabled />
+                <input value="[@(editEntry!.Material?.Code)] @(editEntry!.Material?.Name)" class="form-input" disabled />
             </div>
             <div class="form-group">
                 <label>مقدار *</label>
@@ -93,7 +93,7 @@ else
 {
     <div style="display:flex; justify-content:space-between; align-items:center; margin: 1rem 0 0.5rem;">
         <div class="section-title" style="margin:0;">آخرین ورودی‌ها</div>
-        <div class="search-bar" style="margin:0; max-width:300px;">
+        <div style="max-width:300px;">
             <input value="@searchEntries" @oninput="OnSearchEntries" class="form-input search-input" placeholder="🔍 جستجو..." style="margin:0;" />
         </div>
     </div>
@@ -108,4 +108,147 @@ else
                 </tr>
             </thead>
             <tbody>
-                @foreach (var e in
+                @foreach (var e in filteredEntries)
+                {
+                    <tr class="@(e.ExpiryDate < DateTime.Now ? "row-warning" : "")">
+                        <td><code>@e.Material?.Code</code></td>
+                        <td>@e.Material?.Name</td>
+                        <td>@e.Quantity.ToString("N2") @(e.Material?.Unit?.Name ?? "")</td>
+                        @if (Auth.CanViewPrice)
+                        {
+                            <td style="@(e.PricePerUnit <= 1 ? "color:#dc2626;font-weight:bold;" : "")">
+                                @e.PricePerUnit.ToString("N0") ﷼
+                                @if (e.PricePerUnit <= 1) { <span title="نیاز به اصلاح">⚠️</span> }
+                            </td>
+                        }
+                        <td>@e.EntryDate.ToShamsi()</td>
+                        <td class="@(e.ExpiryDate < DateTime.Now ? "expired" : e.ExpiryDate < DateTime.Now.AddDays(7) ? "expiring" : "")">
+                            @e.ExpiryDate.ToShamsi()
+                        </td>
+                        <td>@e.CreatedByUsername</td>
+                        @if (Auth.IsManager)
+                        {
+                            <td><button class="btn-icon" @onclick="()=>StartEdit(e)" title="ویرایش">✏️</button></td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (Auth.CanViewPrice)
+    {
+        var badCount = entries.Count(e => e.PricePerUnit <= 1);
+        if (badCount > 0)
+        {
+            <div class="alert alert-error" style="margin-top:0.5rem;">
+                ⚠️ @badCount ورودی با قیمت ۱ ریال یا کمتر نیاز به اصلاح دارند.
+            </div>
+        }
+    }
+}
+
+@code {
+    List<Material> materials = new();
+    List<StockEntry> entries = new();
+    List<StockEntry> filteredEntries = new();
+
+    int selId = 0; decimal qty = 0, price = 0;
+    string notes = "", ok = "", err = "";
+    DateTime entryDate = DateTime.Today, expiryDate = DateTime.Today.AddMonths(6);
+
+    bool editMode = false;
+    StockEntry? editEntry;
+    decimal eQty, ePrice;
+    string eNotes = "", editErr = "";
+    DateTime eEntryDate, eExpiryDate;
+    string searchEntries = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        materials = await Warehouse.GetMaterialsAsync();
+        entries = await Warehouse.GetEntriesAsync();
+        filteredEntries = entries;
+    }
+
+    void OnMaterialChange(ChangeEventArgs e) =>
+        selId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+
+    void OnSearchEntries(ChangeEventArgs e)
+    {
+        searchEntries = e.Value?.ToString() ?? "";
+        ApplyFilter();
+    }
+
+    async Task Submit()
+    {
+        ok = ""; err = "";
+        if (selId == 0) { err = "ماده را انتخاب کنید"; return; }
+        if (qty <= 0)   { err = "مقدار باید بیشتر از صفر باشد"; return; }
+        if (Auth.CanViewPrice && price <= 0) { err = "قیمت باید بیشتر از صفر باشد"; return; }
+
+        await Warehouse.AddStockEntryAsync(new StockEntry
+        {
+            MaterialId = selId, Quantity = qty, PricePerUnit = price,
+            EntryDate = entryDate, ExpiryDate = expiryDate, Notes = notes,
+            CreatedByUserId = Auth.CurrentUser!.Id, CreatedByUsername = Auth.CurrentUser.Username
+        });
+        var m = materials.FirstOrDefault(x => x.Id == selId);
+        ok = $"✅ {qty} از [{m?.Code}] {m?.Name} در تاریخ {entryDate.ToShamsi()} ثبت شد";
+        materials = await Warehouse.GetMaterialsAsync();
+        entries = await Warehouse.GetEntriesAsync();
+        ApplyFilter();
+        Reset();
+    }
+
+    void Reset()
+    {
+        selId = 0; qty = 0; price = 0;
+        entryDate = DateTime.Today; expiryDate = DateTime.Today.AddMonths(6); notes = "";
+    }
+
+    void StartEdit(StockEntry e)
+    {
+        editEntry   = e;
+        eQty        = e.Quantity;
+        ePrice      = e.PricePerUnit;
+        eEntryDate  = e.EntryDate;
+        eExpiryDate = e.ExpiryDate;
+        eNotes      = e.Notes;
+        editErr     = "";
+        editMode    = true;
+        ok          = "";
+    }
+
+    void CancelEdit() { editMode = false; editEntry = null; }
+
+    async Task SaveEdit()
+    {
+        editErr = "";
+        if (eQty <= 0) { editErr = "مقدار باید بیشتر از صفر باشد"; return; }
+        if (Auth.CanViewPrice && ePrice <= 0) { editErr = "قیمت باید بیشتر از صفر باشد"; return; }
+
+        editEntry!.Quantity    = eQty;
+        editEntry.PricePerUnit = ePrice;
+        editEntry.EntryDate    = eEntryDate;
+        editEntry.ExpiryDate   = eExpiryDate;
+        editEntry.Notes        = eNotes;
+
+        await Warehouse.UpdateStockEntryAsync(editEntry);
+
+        editMode  = false;
+        editEntry = null;
+        entries = await Warehouse.GetEntriesAsync();
+        ApplyFilter();
+        ok = "✅ ورودی با موفقیت ویرایش شد";
+    }
+
+    void ApplyFilter()
+    {
+        filteredEntries = string.IsNullOrWhiteSpace(searchEntries)
+            ? entries
+            : entries.Where(en =>
+                (en.Material?.Name?.Contains(searchEntries, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (en.Material?.Code?.Contains(searchEntries, StringComparison.OrdinalIgnoreCase) ?? false))
+              .ToList();
+    }
+}
