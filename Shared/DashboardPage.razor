@@ -51,7 +51,7 @@
             <div class="approval-card">
                 <div class="approval-info">
                     <strong>[@w.Material?.Code] @w.Material?.Name</strong>
-                    <span>مقدار: @w.Quantity @w.Material?.Unit</span>
+                    <span>مقدار: @w.Quantity @w.Material?.Unit?.Name</span>
                     <span>متصدی: @w.CreatedByUsername</span>
                     <span>دلیل: @w.Reason</span>
                     <span class="approval-date">@w.CreatedAt.ToShamsiWithTime()</span>
@@ -99,7 +99,7 @@
                 {
                     <tr class="@(m.CurrentStock<=m.MinStockLevel?"row-warning":"")">
                         <td><code>@m.Code</code></td>
-                        <td><strong>@m.Name</strong><br/><small class="text-muted">@m.Unit</small></td>
+                        <td><strong>@m.Name</strong><br/><small class="text-muted">@m.Unit?.Name</small></td>
                         <td>@m.CurrentStock.ToString("N2")</td>
                         @if (Auth.CanViewPrice) { <td>@m.PricePerUnit.ToString("N0") ﷼</td> }
                         <td>
@@ -143,13 +143,13 @@
         var csv = new System.Text.StringBuilder();
         csv.AppendLine("=== مواد اولیه ===");
         csv.AppendLine("کد,نام,واحد,موجودی,حد هشدار,قیمت,تأمین‌کننده");
-        foreach (var m in mats) csv.AppendLine($"{m.Code},{m.Name},{m.Unit},{m.CurrentStock},{m.MinStockLevel},{m.PricePerUnit},{m.Supplier?.Name}");
+        foreach (var m in mats) csv.AppendLine($"{m.Code},{m.Name},{m.Unit?.Name},{m.CurrentStock},{m.MinStockLevel},{m.PricePerUnit},{m.Supplier?.Name}");
         csv.AppendLine("\n=== ورودی‌ها ===");
         csv.AppendLine("کد,ماده,مقدار,واحد,قیمت,تاریخ ورود,تاریخ انقضا,ثبت‌کننده");
-        foreach (var e in entries) csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.Quantity},{e.Material?.Unit},{e.PricePerUnit},{e.EntryDate.ToShamsi()},{e.ExpiryDate.ToShamsi()},{e.CreatedByUsername}");
+        foreach (var e in entries) csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.Quantity},{e.Material?.Unit?.Name},{e.PricePerUnit},{e.EntryDate.ToShamsi()},{e.ExpiryDate.ToShamsi()},{e.CreatedByUsername}");
         csv.AppendLine("\n=== خروجی‌ها ===");
         csv.AppendLine("کد,ماده,مقدار,واحد,تاریخ,کاربر,وضعیت,تایید‌کننده");
-        foreach (var w in withdrawals) csv.AppendLine($"{w.Material?.Code},{w.Material?.Name},{w.Quantity},{w.Material?.Unit},{w.WithdrawalDate.ToShamsi()},{w.CreatedByUsername},{w.Status},{w.ApprovedByUsername}");
+        foreach (var w in withdrawals) csv.AppendLine($"{w.Material?.Code},{w.Material?.Name},{w.Quantity},{w.Material?.Unit?.Name},{w.WithdrawalDate.ToShamsi()},{w.CreatedByUsername},{w.Status},{w.ApprovedByUsername}");
         var bytes = System.Text.Encoding.UTF8.GetPreamble()
             .Concat(System.Text.Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
         await JS.InvokeVoidAsync("downloadFile", Convert.ToBase64String(bytes), "warehouse-report.csv");
