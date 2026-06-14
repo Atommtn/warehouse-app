@@ -27,7 +27,20 @@
         <ul class="nav-menu">
             <li class="@A("dashboard")">  <button @onclick='()=>Go("dashboard")'>📊 داشبورد</button></li>
             <li class="@A("materials")">  <button @onclick='()=>Go("materials")'>📦 مواد اولیه</button></li>
-            <li class="@A("definitions")"><button @onclick='()=>Go("definitions")'>⚙️ تعریف اولیه</button></li>
+            <li class="nav-parent @(IsDefinitions()?"active":"")">
+                <button @onclick="ToggleDefs" class="nav-parent-btn">
+                    ⚙️ تعاریف اولیه
+                    <span class="nav-arrow">@(defsOpen?"▲":"▼")</span>
+                </button>
+                @if (defsOpen)
+                {
+                    <ul class="nav-submenu">
+                        <li class="@AS("units")">    <button @onclick='()=>GoTab("units")'>📐 تعریف واحد</button></li>
+                        <li class="@AS("suppliers")"><button @onclick='()=>GoTab("suppliers")'>🏢 تعریف تأمین‌کنندگان</button></li>
+                        <li class="@AS("groups")">   <button @onclick='()=>GoTab("groups")'>📁 تعریف گروه کالایی</button></li>
+                    </ul>
+                }
+            </li>
             @if (Auth.IsManager)
             {
                 <li class="@A("entry")"><button @onclick='()=>Go("entry")'>⬆️ ورود به انبار</button></li>
@@ -64,7 +77,7 @@
     <main class="main-content" @onclick="CloseSidebar">
         @if (page == "dashboard")                          { <DashboardPage /> }
         else if (page == "materials")                      { <MaterialsPage /> }
-        else if (page == "definitions") { <DefinitionsPage /> }
+        else if (page == "definitions") { <DefinitionsPage DefaultTab="@defsTab" /> }
         else if (page == "entry"      && Auth.IsManager)   { <StockEntryPage /> }
         else if (page == "withdrawal" && Auth.IsAttendant) { <WithdrawalPage /> }
         else if (page == "history")                        { <HistoryPage /> }
@@ -76,8 +89,9 @@
 
 @code {
     string page = "dashboard";
+    string defsTab = "units";
     int alertCount, pendingCount;
-    bool sidebarOpen;
+    bool sidebarOpen, defsOpen;
 
     protected override async Task OnInitializedAsync() => await LoadCounts();
 
@@ -89,7 +103,11 @@
     }
 
     void Go(string p) { page = p; sidebarOpen = false; }
+    void GoTab(string tab) { page = "definitions"; defsTab = tab; sidebarOpen = false; }
+    void ToggleDefs() => defsOpen = !defsOpen;
+    bool IsDefinitions() => page == "definitions";
     string A(string p) => page == p ? "active" : "";
+    string AS(string tab) => page == "definitions" && defsTab == tab ? "active" : "";
     void ToggleSidebar() => sidebarOpen = !sidebarOpen;
     void CloseSidebar()  { if (sidebarOpen) sidebarOpen = false; }
 

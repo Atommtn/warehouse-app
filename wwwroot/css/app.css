@@ -407,3 +407,24 @@ code { background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:.78rem;
 
 .inline-form { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem; padding:.75rem; background:var(--bg); border-radius:8px; }
 .inline-err { color:var(--danger); font-size:.82rem; }
+
+/* ── Sub-menu (تعاریف اولیه) ── */
+.nav-parent { position:relative; }
+.nav-parent-btn {
+  width:100%; display:flex; align-items:center; justify-content:space-between;
+  background:none; border:none; cursor:pointer;
+  padding:.6rem 1.25rem; font-size:.92rem; color:var(--sidebar-text);
+  font-family:inherit; text-align:right; transition:background .15s;
+}
+.nav-parent-btn:hover { background:var(--sidebar-hover); color:#fff; }
+.nav-parent.active .nav-parent-btn { background:var(--sidebar-active); color:#fff; font-weight:600; }
+.nav-arrow { font-size:.7rem; opacity:.7; }
+.nav-submenu { list-style:none; padding:0; margin:0; background:rgba(0,0,0,.15); }
+.nav-submenu li button {
+  width:100%; background:none; border:none; cursor:pointer;
+  padding:.5rem 1.25rem .5rem 2rem; font-size:.86rem;
+  color:var(--sidebar-text); font-family:inherit; text-align:right; transition:background .15s;
+  display:block;
+}
+.nav-submenu li button:hover { background:var(--sidebar-hover); color:#fff; }
+.nav-submenu li.active button { background:var(--sidebar-active); color:#fff; font-weight:600; }

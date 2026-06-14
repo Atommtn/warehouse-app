@@ -124,7 +124,13 @@ else if (tab == "suppliers")
 }
 
 @code {
+    [Parameter] public string DefaultTab { get; set; } = "units";
     string tab = "units";
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(DefaultTab)) tab = DefaultTab;
+    }
     List<Unit> units = new(); List<MaterialGroup> groups = new(); List<Supplier> suppliers = new();
     bool showUnitForm, showGroupForm, showSupForm;
     string newUnitName="", newGroupName="", unitErr="", groupErr="", supErr="";
