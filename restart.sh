@@ -1,14 +1,14 @@
 #!/bin/bash
 echo "=== Stopping old container ==="
-docker-compose down
+docker compose down
 
 echo ""
-echo "=== Building fresh image ==="
-docker-compose build --no-cache
+echo "=== Building image (using Docker layer cache) ==="
+docker compose build
 
 echo ""
 echo "=== Starting container ==="
-docker-compose up -d
+docker compose up -d
 
 echo ""
 echo "=== Waiting 5 seconds for startup ==="

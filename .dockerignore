@@ -1,0 +1,23 @@
+# Git and editor metadata
+.git
+.gitignore
+.idea
+.vscode
+
+# Local .NET build output
+**/bin
+**/obj
+
+# Docker and deployment-only files
+docker-compose*.yml
+restart.sh
+README.md
+
+# Local configuration and temporary files
+.env
+.env.*
+*.user
+*.suo
+*.log
+*.tmp
+

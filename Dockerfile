@@ -7,7 +7,7 @@ WORKDIR /src
 COPY ["WarehouseApp.csproj", "."]
 RUN dotnet restore
 COPY . .
-RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish -c Release -o /app/publish --no-restore /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
