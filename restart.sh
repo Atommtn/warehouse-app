@@ -24,7 +24,7 @@ docker logs warehouse-app --tail 30
 
 echo ""
 echo "=== Testing local connection ==="
-curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:8080 || echo "curl not available"
+curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:9095 || echo "curl not available"
 
 echo ""
 echo "=== Port bindings ==="
