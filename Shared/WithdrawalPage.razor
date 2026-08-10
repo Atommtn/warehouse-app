@@ -14,6 +14,7 @@
     <div class="form-grid">
         <div class="form-group">
             <label>ماده اولیه *</label>
+            <input value="@materialSearch" @oninput="OnMaterialSearch" class="form-input" placeholder="🔍 جستجوی نام یا کد ماده..." />
             <select value="@selId" @onchange="OnMaterialChange" class="form-input">
                 <option value="0">انتخاب کنید...</option>
                 @foreach (var m in materials) { <option value="@m.Id">[@m.Code] @m.Name — @m.CurrentStock @m.Unit</option> }
@@ -73,6 +74,9 @@
 }
 
 <div class="section-title">آخرین خروجی‌ها</div>
+<div class="search-bar">
+    <input value="@withdrawalSearch" @oninput="OnWithdrawalSearch" class="form-input search-input" placeholder="🔍 جستجو در خروجی‌ها بر اساس نام یا کد ماده..." />
+</div>
 <div class="table-responsive">
     <table class="data-table">
         <thead><tr><th>کد</th><th>ماده</th><th>مقدار</th><th>تاریخ</th><th>کاربر</th><th>وضعیت</th></tr></thead>
@@ -100,6 +104,7 @@
     List<Material> materials=new(); List<StockWithdrawal> withdrawals=new(), pendingList=new();
     Material? sel; int selId=0; decimal qty=0; string reason="",ok="",err="";
     DateTime wDate=DateTime.Today; int? rejectingId; string rejectReason="";
+    string materialSearch="", withdrawalSearch="";
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -114,6 +119,18 @@
     {
         selId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         sel = materials.FirstOrDefault(m => m.Id == selId);
+    }
+
+    async Task OnMaterialSearch(ChangeEventArgs e)
+    {
+        materialSearch = e.Value?.ToString() ?? "";
+        materials = await Warehouse.GetMaterialsAsync(materialSearch);
+    }
+
+    async Task OnWithdrawalSearch(ChangeEventArgs e)
+    {
+        withdrawalSearch = e.Value?.ToString() ?? "";
+        withdrawals = await Warehouse.GetWithdrawalsAsync(search: withdrawalSearch);
     }
 
     async Task Submit()

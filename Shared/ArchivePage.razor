@@ -1,0 +1,64 @@
+@using WarehouseApp.Services
+@using WarehouseApp.Models
+@inject WarehouseService Warehouse
+@inject AuthService Auth
+
+<div class="page-header"><h2>🗄️ آرشیو مواد اولیه</h2></div>
+
+<div class="info-banner">
+    اقلام این بخش حذف فیزیکی نشده‌اند و تمام سوابق ورود و خروج آن‌ها حفظ شده است.
+</div>
+
+<div class="search-bar">
+    <input value="@search" @oninput="OnSearch" class="form-input search-input" placeholder="🔍 جستجو بر اساس نام یا کد..." />
+</div>
+
+@if (!materials.Any())
+{
+    <div class="form-card">موردی در آرشیو وجود ندارد.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr><th>کد</th><th>نام</th><th>گروه</th><th>واحد</th><th>موجودی</th><th>تأمین‌کننده</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var m in materials)
+                {
+                    <tr>
+                        <td><code>@m.Code</code></td>
+                        <td><strong>@m.Name</strong></td>
+                        <td>@(m.Group?.Name ?? "-")</td>
+                        <td>@(m.Unit?.Name ?? "-")</td>
+                        <td>@m.CurrentStock.ToString("N2")</td>
+                        <td>@(m.Supplier?.Name ?? "-")</td>
+                        <td><button class="btn btn-success btn-sm" @onclick="() => Restore(m.Id)">♻️ بازیابی</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    List<Material> materials = new();
+    string search = "";
+
+    protected override async Task OnInitializedAsync() => await Load();
+    async Task Load() => materials = await Warehouse.GetArchivedMaterialsAsync(search);
+
+    async Task OnSearch(ChangeEventArgs e)
+    {
+        search = e.Value?.ToString() ?? "";
+        await Load();
+    }
+
+    async Task Restore(int id)
+    {
+        if (!Auth.IsManager) return;
+        await Warehouse.RestoreMaterialAsync(id);
+        await Load();
+    }
+}

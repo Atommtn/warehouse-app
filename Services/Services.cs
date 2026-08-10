@@ -82,6 +82,16 @@ public class WarehouseService
             q = q.Where(m => m.Name.Contains(search) || m.Code.Contains(search));
         return await q.OrderBy(m => m.Code).ToListAsync();
     }
+    public async Task<List<Material>> GetArchivedMaterialsAsync(string? search = null)
+    {
+        await using var db = await _factory.CreateDbContextAsync();
+        var q = db.Materials
+            .Include(m => m.Supplier).Include(m => m.Unit).Include(m => m.Group)
+            .Where(m => !m.IsActive).AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search))
+            q = q.Where(m => m.Name.Contains(search) || m.Code.Contains(search));
+        return await q.OrderBy(m => m.Code).ToListAsync();
+    }
     public async Task<Material?> GetMaterialAsync(int id)
     { await using var db = await _factory.CreateDbContextAsync(); return await db.Materials.Include(m => m.Supplier).Include(m => m.Unit).Include(m => m.Group).FirstOrDefaultAsync(m => m.Id == id); }
     public async Task<bool> CodeExistsAsync(string code, int? excludeId = null)
@@ -90,8 +100,12 @@ public class WarehouseService
     { await using var db = await _factory.CreateDbContextAsync(); db.Materials.Add(m); await db.SaveChangesAsync(); }
     public async Task UpdateMaterialAsync(Material m)
     { await using var db = await _factory.CreateDbContextAsync(); db.Materials.Update(m); await db.SaveChangesAsync(); }
-    public async Task DeleteMaterialAsync(int id)
+    public async Task ArchiveMaterialAsync(int id)
     { await using var db = await _factory.CreateDbContextAsync(); var m = await db.Materials.FindAsync(id); if (m!=null){m.IsActive=false; await db.SaveChangesAsync();} }
+    public async Task RestoreMaterialAsync(int id)
+    { await using var db = await _factory.CreateDbContextAsync(); var m = await db.Materials.FindAsync(id); if (m!=null){m.IsActive=true; await db.SaveChangesAsync();} }
+    public Task DeleteMaterialAsync(int id) => ArchiveMaterialAsync(id);
+
 
     // ── Stock Entries ──
     public async Task AddStockEntryAsync(StockEntry entry)
