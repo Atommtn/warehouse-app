@@ -33,7 +33,7 @@
                     <tr class="@(e.ExpiryDate<DateTime.Now?"row-warning":"")">
                         <td><code>@e.Material?.Code</code></td>
                         <td>@e.Material?.Name</td>
-                        <td>@e.Quantity.ToString("N2") @e.Material?.Unit</td>
+                        <td>@e.EnteredQuantity.ToString("N3") @e.EnteredUnitName <small class="text-muted">= @e.Quantity.ToString("N3") @e.Material?.BaseUnitName</small></td>
                         @if (Auth.CanViewPrice) { <td>@e.PricePerUnit.ToString("N0") ﷼</td> }
                         <td>@e.EntryDate.ToShamsi()</td>
                         <td class="@(e.ExpiryDate<DateTime.Now?"expired":e.ExpiryDate<DateTime.Now.AddDays(7)?"expiring":"")">
@@ -57,7 +57,7 @@ else
                     <tr>
                         <td><code>@w.Material?.Code</code></td>
                         <td>@w.Material?.Name</td>
-                        <td>@w.Quantity.ToString("N2") @w.Material?.Unit</td>
+                        <td>@w.EnteredQuantity.ToString("N3") @w.EnteredUnitName <small class="text-muted">= @w.Quantity.ToString("N3") @w.Material?.BaseUnitName</small></td>
                         <td>@w.WithdrawalDate.ToShamsi()</td>
                         <td>@w.CreatedByUsername</td>
                         <td>
@@ -88,13 +88,13 @@ else
         {
             csv.AppendLine("کد,ماده,مقدار,واحد,قیمت,تاریخ ورود,تاریخ انقضا,ثبت‌کننده");
             foreach (var e in entries)
-                csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.Quantity},{e.Material?.Unit},{e.PricePerUnit},{e.EntryDate.ToShamsi()},{e.ExpiryDate.ToShamsi()},{e.CreatedByUsername}");
+                csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.EnteredQuantity},{e.EnteredUnitName},{e.PricePerUnit},{e.EntryDate.ToShamsi()},{e.ExpiryDate.ToShamsi()},{e.CreatedByUsername}");
         }
         else
         {
             csv.AppendLine("کد,ماده,مقدار,واحد,تاریخ خروج,کاربر,وضعیت,تایید‌کننده");
             foreach (var w in withdrawals)
-                csv.AppendLine($"{w.Material?.Code},{w.Material?.Name},{w.Quantity},{w.Material?.Unit},{w.WithdrawalDate.ToShamsi()},{w.CreatedByUsername},{w.Status},{w.ApprovedByUsername}");
+                csv.AppendLine($"{w.Material?.Code},{w.Material?.Name},{w.EnteredQuantity},{w.EnteredUnitName},{w.WithdrawalDate.ToShamsi()},{w.CreatedByUsername},{w.Status},{w.ApprovedByUsername}");
         }
         var bytes = System.Text.Encoding.UTF8.GetPreamble()
             .Concat(System.Text.Encoding.UTF8.GetBytes(csv.ToString())).ToArray();

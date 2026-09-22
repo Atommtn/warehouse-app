@@ -39,7 +39,7 @@ public static class PageAccess
 {
     public static readonly (string Key,string Label)[] Pages =
     [
-        ("dashboard","داشبورد"),("materials","مواد اولیه"),("archive","آرشیو مواد"),("warehouses","انبارها و تفصیل"),("definitions","تعاریف اولیه"),
+        ("dashboard","داشبورد"),("materials","مواد اولیه"),("archive","آرشیو مواد"),("warehouses","انبارها و تفصیل"),("unit-config","بازتعریف واحدها"),("definitions","تعاریف اولیه"),
         ("entry","ورود به انبار"),("withdrawal","خروج از انبار"),("transfer","انتقال بین انبارها"),("warehouse-stock","موجودی تفکیکی"),("cardex","کاردکس"),
         ("history","تاریخچه"),("prices","تحلیل قیمت"),("recipes","رسپی‌ها"),("alerts","هشدارها"),("users","مدیریت کاربران")
     ];
@@ -53,6 +53,21 @@ public class WarehouseService
     public async Task SaveRolePermissionsAsync(UserRole role,IEnumerable<string> allowed){await using var db=await _factory.CreateDbContextAsync();var set=allowed.ToHashSet(StringComparer.OrdinalIgnoreCase);var rows=await db.RolePagePermissions.Where(x=>x.Role==role).ToListAsync();foreach(var page in PageAccess.Pages){var row=rows.FirstOrDefault(x=>x.PageKey==page.Key);if(row==null){row=new RolePagePermission{Role=role,PageKey=page.Key};db.RolePagePermissions.Add(row);}row.IsAllowed=role==UserRole.Admin||set.Contains(page.Key);}await db.SaveChangesAsync();}
 
     public async Task<List<Warehouse>> GetWarehousesAsync() { await using var db=await _factory.CreateDbContextAsync(); return await db.Warehouses.Where(x=>x.IsActive).OrderBy(x=>x.Id).ToListAsync(); }
+    public async Task<List<MaterialUnitConversion>> GetMaterialUnitsAsync(int materialId){await using var db=await _factory.CreateDbContextAsync();return await db.MaterialUnitConversions.Where(x=>x.MaterialId==materialId&&x.IsActive).OrderByDescending(x=>x.IsLegacyStockUnit).ThenBy(x=>x.UnitName).ToListAsync();}
+    public async Task ConfigureMaterialUnitsAsync(int materialId,string baseUnit,List<MaterialUnitConversion> conversions)
+    {
+        if(string.IsNullOrWhiteSpace(baseUnit))throw new Exception("واحد پایه الزامی است");if(conversions.Count==0||conversions.Any(x=>string.IsNullOrWhiteSpace(x.UnitName)||x.FactorToBaseUnit<=0))throw new Exception("نام واحد و ضریب مثبت برای همه ردیف‌ها الزامی است");if(conversions.Select(x=>x.UnitName.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=conversions.Count)throw new Exception("نام واحد تکراری است");if(conversions.Count(x=>x.IsLegacyStockUnit)!=1)throw new Exception("دقیقاً یک واحد باید به‌عنوان واحد قدیمی انبار مشخص شود");
+        await using var db=await _factory.CreateDbContextAsync();await using var tx=await db.Database.BeginTransactionAsync();var m=await db.Materials.FindAsync(materialId)??throw new Exception("ماده یافت نشد");var oldLegacy=await db.MaterialUnitConversions.Where(x=>x.MaterialId==materialId&&x.IsLegacyStockUnit).Select(x=>x.FactorToBaseUnit).FirstOrDefaultAsync();if(oldLegacy<=0)oldLegacy=m.BaseQuantity>0?m.BaseQuantity:1;var newLegacy=conversions.Single(x=>x.IsLegacyStockUnit).FactorToBaseUnit;var ratio=newLegacy/oldLegacy;
+        var old=await db.MaterialUnitConversions.Where(x=>x.MaterialId==materialId).ToListAsync();db.MaterialUnitConversions.RemoveRange(old);foreach(var c in conversions){c.Id=0;c.MaterialId=materialId;c.UnitName=c.UnitName.Trim();db.MaterialUnitConversions.Add(c);}m.BaseUnitName=baseUnit.Trim();m.BaseQuantity=newLegacy;m.CurrentStock*=ratio;m.MinStockLevel*=ratio;
+        var stocks=await db.WarehouseStocks.Where(x=>x.MaterialId==materialId).ToListAsync();foreach(var s in stocks){s.Quantity*=ratio;s.MinStockLevel*=ratio;}
+        var map=conversions.ToDictionary(x=>x.UnitName,x=>x.FactorToBaseUnit,StringComparer.OrdinalIgnoreCase);var entries=await db.StockEntries.Where(x=>x.MaterialId==materialId).ToListAsync();foreach(var e in entries){if(e.EnteredQuantity==0)e.EnteredQuantity=e.Quantity/(e.ConversionFactor<=0?1:e.ConversionFactor);if(string.IsNullOrWhiteSpace(e.EnteredUnitName))e.EnteredUnitName=conversions.Single(x=>x.IsLegacyStockUnit).UnitName;if(map.TryGetValue(e.EnteredUnitName,out var f)){e.ConversionFactor=f;e.Quantity=e.EnteredQuantity*f;}}
+        var outs=await db.StockWithdrawals.Where(x=>x.MaterialId==materialId).ToListAsync();foreach(var w in outs){if(w.EnteredQuantity==0)w.EnteredQuantity=w.Quantity/(w.ConversionFactor<=0?1:w.ConversionFactor);if(string.IsNullOrWhiteSpace(w.EnteredUnitName))w.EnteredUnitName=conversions.Single(x=>x.IsLegacyStockUnit).UnitName;if(map.TryGetValue(w.EnteredUnitName,out var f)){w.ConversionFactor=f;w.Quantity=w.EnteredQuantity*f;}}
+        var recipes=await db.RecipeIngredients.Where(x=>x.MaterialId==materialId).ToListAsync();foreach(var r in recipes)if(string.IsNullOrWhiteSpace(r.UnitName))r.UnitName=baseUnit;
+        await db.SaveChangesAsync();await RebuildMaterialCardexAsync(db,materialId);await db.SaveChangesAsync();await tx.CommitAsync();
+    }
+    private static async Task RebuildMaterialCardexAsync(AppDbContext db,int materialId)
+    {
+        var replace=await db.InventoryTransactions.Where(x=>x.MaterialId==materialId&&(x.Type==InventoryTransactionType.Entry||x.Type==InventoryTransactionType.Withdrawal||x.Type==InventoryTransactionType.Adjustment||x.DocumentNumber.StartsWith("OPEN-"))).ToListAsync();db.InventoryTransactions.RemoveRange(replace);await db.SaveChangesAsync();var entries=await db.StockEntries.Where(x=>x.MaterialId==materialId).ToListAsync();var outs=await db.StockWithdrawals.Where(x=>x.MaterialId==materialId&&x.Status==WithdrawalStatus.Approved).ToListAsync();var preserved=await db.InventoryTransactions.Where(x=>x.MaterialId==materialId).ToListAsync();var events=new List<CardexRebuildEvent>();events.AddRange(entries.Select(x=>new CardexRebuildEvent(x.EntryDate,1,x.Id,x.WarehouseId!.Value,x.Quantity,0,x.PricePerUnit/(x.ConversionFactor<=0?1:x.ConversionFactor),x.Notes,x.CreatedByUserId,x.CreatedByUsername,x.CreatedAt,$"LEGACY-IN-{x.Id}",null)));events.AddRange(outs.Select(x=>new CardexRebuildEvent(x.WithdrawalDate,2,x.Id,x.WarehouseId!.Value,0,x.Quantity,0,x.Reason,x.CreatedByUserId,x.CreatedByUsername,x.CreatedAt,$"LEGACY-OUT-{x.Id}",null)));events.AddRange(preserved.Select(x=>new CardexRebuildEvent(x.TransactionDate,3,x.Id,x.WarehouseId,x.IncomingQuantity,x.OutgoingQuantity,x.UnitPrice,x.Description,x.CreatedByUserId,x.CreatedByUsername,x.CreatedAt,x.DocumentNumber,x)));var balances=new Dictionary<int,decimal>();foreach(var e in events.OrderBy(x=>x.Date).ThenBy(x=>x.Order).ThenBy(x=>x.Id)){balances.TryGetValue(e.Warehouse,out var b);b+=e.In-e.Out;balances[e.Warehouse]=b;if(e.Existing!=null)e.Existing.BalanceAfter=b;else db.InventoryTransactions.Add(new InventoryTransaction{DocumentNumber=e.Doc,Type=e.In>0?InventoryTransactionType.Entry:InventoryTransactionType.Withdrawal,WarehouseId=e.Warehouse,MaterialId=materialId,IncomingQuantity=e.In,OutgoingQuantity=e.Out,BalanceAfter=b,UnitPrice=e.Price,TransactionDate=e.Date,Description=e.Description,CreatedByUserId=e.UserId,CreatedByUsername=e.User,CreatedAt=e.Created});}await db.SaveChangesAsync();var stocks=await db.WarehouseStocks.Where(x=>x.MaterialId==materialId).ToListAsync();foreach(var s in stocks){balances.TryGetValue(s.WarehouseId,out var b);var diff=s.Quantity-b;if(diff!=0)db.InventoryTransactions.Add(new InventoryTransaction{DocumentNumber=$"RECON-{materialId}-{s.WarehouseId}",Type=InventoryTransactionType.Adjustment,WarehouseId=s.WarehouseId,MaterialId=materialId,IncomingQuantity=diff>0?diff:0,OutgoingQuantity=diff<0?-diff:0,BalanceAfter=s.Quantity,UnitPrice=0,TransactionDate=DateTime.Now,Description="اصلاح شفاف مغایرت مانده با سوابق قدیمی",CreatedByUsername="system"});}}
     public async Task UpdateWarehouseAsync(Warehouse item){await using var db=await _factory.CreateDbContextAsync();db.Warehouses.Update(item);await db.SaveChangesAsync();}
     public async Task<List<WarehouseStock>> GetWarehouseStocksAsync(int? warehouseId=null, string? search=null)
     {
@@ -73,14 +88,16 @@ public class WarehouseService
     }
     private static string Document(string prefix)=>$"{prefix}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
 
-    public async Task TransferAsync(int sourceId,int destinationId,int materialId,decimal quantity,DateTime date,string notes,int userId,string username)
+    public async Task TransferAsync(int sourceId,int destinationId,int materialId,decimal enteredQuantity,string unitName,DateTime date,string notes,int userId,string username)
     {
         if(sourceId==destinationId) throw new Exception("انبار مبدأ و مقصد نمی‌توانند یکسان باشند");
-        if(quantity<=0) throw new Exception("مقدار انتقال باید بیشتر از صفر باشد");
+        if(enteredQuantity<=0) throw new Exception("مقدار انتقال باید بیشتر از صفر باشد");
         await using var db=await _factory.CreateDbContextAsync(); await using var tx=await db.Database.BeginTransactionAsync();
+        var conversion=await db.MaterialUnitConversions.FirstOrDefaultAsync(x=>x.MaterialId==materialId&&x.UnitName==unitName&&x.IsActive)??throw new Exception("واحد انتقال معتبر نیست");var quantity=enteredQuantity*conversion.FactorToBaseUnit;
         var source=await StockAsync(db,sourceId,materialId); if(source.Quantity<quantity) throw new Exception($"موجودی انبار مبدأ کافی نیست (موجودی: {source.Quantity:N3})");
         var destination=await StockAsync(db,destinationId,materialId); source.Quantity-=quantity; destination.Quantity+=quantity;
-        var unitPrice=await db.StockEntries.Where(x=>x.MaterialId==materialId).OrderByDescending(x=>x.EntryDate).ThenByDescending(x=>x.Id).Select(x=>x.PricePerUnit).FirstOrDefaultAsync();
+        var latestEntry=await db.StockEntries.Where(x=>x.MaterialId==materialId).OrderByDescending(x=>x.EntryDate).ThenByDescending(x=>x.Id).FirstOrDefaultAsync();
+        var unitPrice=latestEntry==null?0:latestEntry.PricePerUnit/(latestEntry.ConversionFactor<=0?1:latestEntry.ConversionFactor);
         var doc=Document("TR");
         db.InventoryTransactions.AddRange(
             new InventoryTransaction{DocumentNumber=doc,Type=InventoryTransactionType.TransferOut,WarehouseId=sourceId,RelatedWarehouseId=destinationId,MaterialId=materialId,OutgoingQuantity=quantity,BalanceAfter=source.Quantity,UnitPrice=unitPrice,TransactionDate=date,Description=notes,CreatedByUserId=userId,CreatedByUsername=username},
@@ -178,7 +195,7 @@ public class WarehouseService
     {
         if(!entry.WarehouseId.HasValue) throw new Exception("انبار را انتخاب کنید");
         await using var db = await _factory.CreateDbContextAsync(); await using var tx=await db.Database.BeginTransactionAsync();
-        db.StockEntries.Add(entry);
+        var unit=await db.MaterialUnitConversions.FirstOrDefaultAsync(x=>x.MaterialId==entry.MaterialId&&x.UnitName==entry.EnteredUnitName&&x.IsActive)??throw new Exception("واحد ورود معتبر نیست");entry.EnteredQuantity=entry.EnteredQuantity>0?entry.EnteredQuantity:entry.Quantity;entry.ConversionFactor=unit.FactorToBaseUnit;entry.Quantity=entry.EnteredQuantity*entry.ConversionFactor;db.StockEntries.Add(entry);
         var mat = await db.Materials.FindAsync(entry.MaterialId);
         var stock=await StockAsync(db,entry.WarehouseId.Value,entry.MaterialId); stock.Quantity+=entry.Quantity;
         if (mat != null) mat.PricePerUnit = entry.PricePerUnit;
@@ -199,8 +216,9 @@ public class WarehouseService
         var existing = await db.StockEntries.FindAsync(entry.Id);
         if (existing == null) return;
         var oldQty = existing.Quantity;
-        var difference=entry.Quantity-oldQty;
-        existing.Quantity     = entry.Quantity;
+        var unit=await db.MaterialUnitConversions.FirstOrDefaultAsync(x=>x.MaterialId==existing.MaterialId&&x.UnitName==entry.EnteredUnitName&&x.IsActive)??throw new Exception("واحد ورود معتبر نیست");var newBaseQuantity=entry.EnteredQuantity*unit.FactorToBaseUnit;var difference=newBaseQuantity-oldQty;
+        existing.EnteredQuantity=entry.EnteredQuantity;existing.EnteredUnitName=entry.EnteredUnitName;existing.ConversionFactor=unit.FactorToBaseUnit;
+        existing.Quantity     = newBaseQuantity;
         existing.PricePerUnit = entry.PricePerUnit;
         existing.EntryDate    = entry.EntryDate;
         existing.ExpiryDate   = entry.ExpiryDate;
@@ -209,7 +227,7 @@ public class WarehouseService
         if(existing.WarehouseId.HasValue && difference!=0){var stock=await StockAsync(db,existing.WarehouseId.Value,existing.MaterialId);if(stock.Quantity+difference<0)throw new Exception("ویرایش باعث منفی شدن موجودی انبار می‌شود");stock.Quantity+=difference;db.InventoryTransactions.Add(new InventoryTransaction{DocumentNumber=Document("ADJ"),Type=InventoryTransactionType.Adjustment,WarehouseId=existing.WarehouseId.Value,MaterialId=existing.MaterialId,IncomingQuantity=difference>0?difference:0,OutgoingQuantity=difference<0?-difference:0,BalanceAfter=stock.Quantity,UnitPrice=entry.PricePerUnit,TransactionDate=DateTime.Now,Description=$"اصلاح سند ورود شماره {entry.Id}",CreatedByUserId=entry.CreatedByUserId,CreatedByUsername=entry.CreatedByUsername});}
         if (mat != null)
         {
-            mat.CurrentStock += (entry.Quantity - oldQty);
+            mat.CurrentStock += difference;
             var lastEntry = await db.StockEntries
                 .Where(e => e.MaterialId == mat.Id && e.Id != entry.Id)
                 .OrderByDescending(e => e.EntryDate)
@@ -226,11 +244,11 @@ public class WarehouseService
     {
         if(!w.WarehouseId.HasValue) throw new Exception("انبار را انتخاب کنید");
         await using var db = await _factory.CreateDbContextAsync(); await using var tx=await db.Database.BeginTransactionAsync();
-        var mat = await db.Materials.FindAsync(w.MaterialId);
+        var mat = await db.Materials.FindAsync(w.MaterialId);var unit=await db.MaterialUnitConversions.FirstOrDefaultAsync(x=>x.MaterialId==w.MaterialId&&x.UnitName==w.EnteredUnitName&&x.IsActive)??throw new Exception("واحد خروج معتبر نیست");w.EnteredQuantity=w.EnteredQuantity>0?w.EnteredQuantity:w.Quantity;w.ConversionFactor=unit.FactorToBaseUnit;w.Quantity=w.EnteredQuantity*w.ConversionFactor;
         if (mat == null) throw new Exception("ماده یافت نشد");
         var stock=await StockAsync(db,w.WarehouseId.Value,w.MaterialId); if(stock.Quantity<w.Quantity) throw new Exception($"موجودی کافی نیست (موجودی انبار: {stock.Quantity:N3})");
-        stock.Quantity-=w.Quantity; w.Status=WithdrawalStatus.Approved; w.ApprovedAt=DateTime.UtcNow; w.ApprovedByUserId=w.CreatedByUserId; w.ApprovedByUsername=w.CreatedByUsername;
-        db.StockWithdrawals.Add(w); db.InventoryTransactions.Add(new InventoryTransaction{DocumentNumber=Document("OUT"),Type=InventoryTransactionType.Withdrawal,WarehouseId=w.WarehouseId.Value,MaterialId=w.MaterialId,OutgoingQuantity=w.Quantity,BalanceAfter=stock.Quantity,UnitPrice=mat.PricePerUnit,TransactionDate=w.WithdrawalDate,Description=w.Reason,CreatedByUserId=w.CreatedByUserId,CreatedByUsername=w.CreatedByUsername});
+        stock.Quantity-=w.Quantity; w.Status=WithdrawalStatus.Approved; w.ApprovedAt=DateTime.UtcNow; w.ApprovedByUserId=w.CreatedByUserId; w.ApprovedByUsername=w.CreatedByUsername;var latestPurchase=await db.StockEntries.Where(x=>x.MaterialId==w.MaterialId).OrderByDescending(x=>x.EntryDate).ThenByDescending(x=>x.Id).FirstOrDefaultAsync();var pricePerBase=latestPurchase==null?0:latestPurchase.PricePerUnit/(latestPurchase.ConversionFactor<=0?1:latestPurchase.ConversionFactor);
+        db.StockWithdrawals.Add(w); db.InventoryTransactions.Add(new InventoryTransaction{DocumentNumber=Document("OUT"),Type=InventoryTransactionType.Withdrawal,WarehouseId=w.WarehouseId.Value,MaterialId=w.MaterialId,OutgoingQuantity=w.Quantity,BalanceAfter=stock.Quantity,UnitPrice=pricePerBase,TransactionDate=w.WithdrawalDate,Description=w.Reason,CreatedByUserId=w.CreatedByUserId,CreatedByUsername=w.CreatedByUsername});
         await db.SaveChangesAsync(); await SyncTotalAsync(db,w.MaterialId); await db.SaveChangesAsync(); await tx.CommitAsync();
     }
     public async Task<List<StockWithdrawal>> GetWithdrawalsAsync(int? materialId = null, string? search = null)
@@ -272,13 +290,13 @@ public class WarehouseService
     {
         await using var db = await _factory.CreateDbContextAsync();
         var alerts = new List<StockAlert>();
-        var materials = await db.Materials.Include(m => m.Unit).Where(m => m.IsActive).ToListAsync();
+        var materials = await db.Materials.Where(m => m.IsActive).ToListAsync();
         var now = DateTime.UtcNow; var soon = now.AddDays(7);
         foreach (var mat in materials)
         {
             if (!string.IsNullOrWhiteSpace(search) && !mat.Name.Contains(search, StringComparison.OrdinalIgnoreCase) && !mat.Code.Contains(search, StringComparison.OrdinalIgnoreCase)) continue;
             if (mat.CurrentStock <= mat.MinStockLevel)
-                alerts.Add(new StockAlert { MaterialId=mat.Id, MaterialName=mat.Name, MaterialCode=mat.Code, Unit=mat.Unit?.Name??"", CurrentStock=mat.CurrentStock, MinStockLevel=mat.MinStockLevel, Type=AlertType.LowStock, Message=$"موجودی {mat.Name} ({mat.CurrentStock}) به حد هشدار رسیده" });
+                alerts.Add(new StockAlert { MaterialId=mat.Id, MaterialName=mat.Name, MaterialCode=mat.Code, Unit=mat.BaseUnitName, CurrentStock=mat.CurrentStock, MinStockLevel=mat.MinStockLevel, Type=AlertType.LowStock, Message=$"موجودی {mat.Name} ({mat.CurrentStock}) به حد هشدار رسیده" });
         }
         var expiring = await db.StockEntries.Include(e => e.Material).Where(e => e.ExpiryDate <= soon && e.ExpiryDate >= now && e.Material!.IsActive).ToListAsync();
         foreach (var e in expiring)
@@ -296,7 +314,16 @@ public class WarehouseService
         var alerts = await GetAlertsAsync();
         var invalidPriceCount=await db.StockEntries.CountAsync(x=>x.PricePerUnit<100000&&!x.PriceConfirmed);
         var pendingCount = await db.StockWithdrawals.CountAsync(w => w.Status == WithdrawalStatus.Pending);
-        return (materials.Sum(m => m.CurrentStock * m.PricePerUnit), materials.Count, materials.Count(m => m.CurrentStock <= m.MinStockLevel), alerts.Count+invalidPriceCount, pendingCount);
+        var latestEntries = await db.StockEntries
+            .OrderByDescending(x => x.EntryDate).ThenByDescending(x => x.Id)
+            .ToListAsync();
+        var totalValue = materials.Sum(m =>
+        {
+            var entry = latestEntries.FirstOrDefault(x => x.MaterialId == m.Id);
+            var basePrice = entry == null ? 0 : entry.PricePerUnit / (entry.ConversionFactor <= 0 ? 1 : entry.ConversionFactor);
+            return m.CurrentStock * basePrice;
+        });
+        return (totalValue, materials.Count, materials.Count(m => m.CurrentStock <= m.MinStockLevel), alerts.Count+invalidPriceCount, pendingCount);
     }
 
     public async Task<(List<Material> materials, List<StockEntry> entries, List<StockWithdrawal> withdrawals, List<StockAlert> alerts)> GetExportDataAsync()
@@ -327,7 +354,7 @@ public class WarehouseService
         var outs=await db.StockWithdrawals.Include(x=>x.Material).ThenInclude(x=>x!.Unit).Where(x=>x.Status==WithdrawalStatus.Approved&&x.WithdrawalDate>=from.Date&&x.WithdrawalDate<end&&(!warehouseId.HasValue||x.WarehouseId==warehouseId)&&(!materialId.HasValue||x.MaterialId==materialId)).ToListAsync();
         var txPrices=await db.InventoryTransactions.Where(x=>x.Type==InventoryTransactionType.Withdrawal&&x.TransactionDate>=from.Date&&x.TransactionDate<end).ToListAsync();
         var ids=entries.Select(x=>x.MaterialId).Concat(outs.Select(x=>x.MaterialId)).Distinct().ToList();var priceHistory=await db.StockEntries.Where(x=>ids.Contains(x.MaterialId)&&x.EntryDate<end).ToListAsync();var result=new MovementDashboard();
-        foreach(var id in ids){var e=entries.Where(x=>x.MaterialId==id).ToList();var o=outs.Where(x=>x.MaterialId==id).ToList();var mat=e.FirstOrDefault()?.Material??o.FirstOrDefault()?.Material;var row=new MovementDashboardRow{MaterialId=id,MaterialCode=mat?.Code??"",MaterialName=mat?.Name??"",Unit=mat?.Unit?.Name??"",IncomingQuantity=e.Sum(x=>x.Quantity),IncomingValue=e.Sum(x=>x.Quantity*x.PricePerUnit),OutgoingQuantity=o.Sum(x=>x.Quantity)};foreach(var w in o){var price=txPrices.Where(x=>x.MaterialId==id&&x.WarehouseId==w.WarehouseId).OrderBy(x=>Math.Abs((x.CreatedAt-w.CreatedAt).Ticks)).Select(x=>x.UnitPrice).FirstOrDefault();if(price<=0){price=priceHistory.Where(x=>x.MaterialId==id&&x.EntryDate<=w.WithdrawalDate).OrderByDescending(x=>x.EntryDate).ThenByDescending(x=>x.Id).Select(x=>x.PricePerUnit).FirstOrDefault();row.HasEstimatedOutgoingValue=true;}row.OutgoingValue+=w.Quantity*price;}result.Rows.Add(row);}return result;
+        foreach(var id in ids){var e=entries.Where(x=>x.MaterialId==id).ToList();var o=outs.Where(x=>x.MaterialId==id).ToList();var mat=e.FirstOrDefault()?.Material??o.FirstOrDefault()?.Material;var row=new MovementDashboardRow{MaterialId=id,MaterialCode=mat?.Code??"",MaterialName=mat?.Name??"",Unit=mat?.BaseUnitName??"",IncomingQuantity=e.Sum(x=>x.Quantity),IncomingValue=e.Sum(x=>(x.EnteredQuantity>0?x.EnteredQuantity:x.Quantity)*x.PricePerUnit),OutgoingQuantity=o.Sum(x=>x.Quantity)};foreach(var w in o){var price=txPrices.Where(x=>x.MaterialId==id&&x.WarehouseId==w.WarehouseId).OrderBy(x=>Math.Abs((x.CreatedAt-w.CreatedAt).Ticks)).Select(x=>x.UnitPrice).FirstOrDefault();if(price<=0){var pe=priceHistory.Where(x=>x.MaterialId==id&&x.EntryDate<=w.WithdrawalDate).OrderByDescending(x=>x.EntryDate).ThenByDescending(x=>x.Id).FirstOrDefault();price=pe==null?0:pe.PricePerUnit/(pe.ConversionFactor<=0?1:pe.ConversionFactor);row.HasEstimatedOutgoingValue=true;}row.OutgoingValue+=w.Quantity*price;}result.Rows.Add(row);}return result;
     }
 
     // ── Recipes ──
@@ -400,15 +427,15 @@ public class WarehouseService
             // ضریب تبدیل: چند واحد پایه در هر واحد انبار
             var material = await db.Materials.Include(x=>x.Unit).FirstOrDefaultAsync(x=>x.Id==ing.MaterialId);
             decimal lastPricePerStockUnit = lastEntry?.PricePerUnit ?? material?.PricePerUnit ?? 0;
-            var baseQty  = (material?.BaseQuantity ?? 1);
-            if (baseQty <= 0) baseQty = 1;
+            var purchaseFactor=lastEntry?.ConversionFactor??material?.BaseQuantity??1;if(purchaseFactor<=0)purchaseFactor=1;
+            var ingredientFactor=await db.MaterialUnitConversions.Where(x=>x.MaterialId==ing.MaterialId&&x.UnitName==ing.UnitName&&x.IsActive).Select(x=>x.FactorToBaseUnit).FirstOrDefaultAsync();if(ingredientFactor<=0)ingredientFactor=1;
 
             // قیمت هر واحد پایه (مثلاً هر کیلو)
-            decimal pricePerBase = lastPricePerStockUnit / baseQty;
+            decimal pricePerBase = lastPricePerStockUnit / purchaseFactor;
 
             // هزینه این قلم = مقدار (بر اساس واحد پایه) × قیمت هر واحد پایه
-            var lineCost = ing.Quantity * pricePerBase;
-            resultLines.Add(new RecipeCostLine{MaterialId=ing.MaterialId,MaterialCode=material?.Code??"",MaterialName=material?.Name??"",IsTopping=ing.IsTopping,Quantity=ing.Quantity,BaseUnitName=material?.BaseUnitName??"",StockUnitName=material?.Unit?.Name??"",ConversionFactor=baseQty,LastPurchasePrice=lastPricePerStockUnit,PricePerBaseUnit=pricePerBase,LineCost=lineCost});
+            var baseQuantity=ing.Quantity*ingredientFactor;var lineCost = baseQuantity * pricePerBase;
+            resultLines.Add(new RecipeCostLine{MaterialId=ing.MaterialId,MaterialCode=material?.Code??"",MaterialName=material?.Name??"",IsTopping=ing.IsTopping,Quantity=ing.Quantity,InputUnitName=ing.UnitName,BaseQuantity=baseQuantity,BaseUnitName=material?.BaseUnitName??"",StockUnitName=lastEntry?.EnteredUnitName??material?.Unit?.Name??"",ConversionFactor=ingredientFactor,LastPurchasePrice=lastPricePerStockUnit,PricePerBaseUnit=pricePerBase,LineCost=lineCost});
             if (ing.IsTopping) toppingCost += lineCost;
             else               mainCost    += lineCost;
         }
@@ -422,7 +449,7 @@ public class WarehouseService
 
         // جمع وزن مواد اصلی در واحد پایه (برای محاسبه هزینه/کیلو)
         // اگر واحد پایه کیلوگرم باشد مستقیم جمع می‌شود؛ در غیر این صورت کاربر باید واحد یکسان بزند
-        decimal totalMainWeight = recipe.Ingredients.Where(i => !i.IsTopping).Sum(i => i.Quantity);
+        decimal totalMainWeight = resultLines.Where(i=>!i.IsTopping).Sum(i=>i.BaseUnitName.Contains("گرم")&&!i.BaseUnitName.Contains("کیلو")?i.BaseQuantity/1000m:i.BaseQuantity);
 
         decimal costPerKg    = totalMainWeight > 0 ? afterLoss / totalMainWeight : 0;
         decimal costPerPiece = recipe.PieceWeightGrams > 0
@@ -465,9 +492,10 @@ public class RecipeCostResult
 public class RecipeCostLine
 {
     public int MaterialId { get;set; } public string MaterialCode {get;set;}=""; public string MaterialName {get;set;}=""; public bool IsTopping {get;set;}
-    public decimal Quantity {get;set;} public string BaseUnitName {get;set;}=""; public string StockUnitName {get;set;}=""; public decimal ConversionFactor {get;set;}
+    public decimal Quantity {get;set;} public string InputUnitName{get;set;}="";public decimal BaseQuantity{get;set;} public string BaseUnitName {get;set;}=""; public string StockUnitName {get;set;}=""; public decimal ConversionFactor {get;set;}
     public decimal LastPurchasePrice {get;set;} public decimal PricePerBaseUnit {get;set;} public decimal LineCost {get;set;}
 }
 
 public class MovementDashboard{public List<MovementDashboardRow> Rows{get;set;}=new();public decimal IncomingQuantity=>Rows.Sum(x=>x.IncomingQuantity);public decimal OutgoingQuantity=>Rows.Sum(x=>x.OutgoingQuantity);public decimal IncomingValue=>Rows.Sum(x=>x.IncomingValue);public decimal OutgoingValue=>Rows.Sum(x=>x.OutgoingValue);}
 public class MovementDashboardRow{public int MaterialId{get;set;}public string MaterialCode{get;set;}="";public string MaterialName{get;set;}="";public string Unit{get;set;}="";public decimal IncomingQuantity{get;set;}public decimal OutgoingQuantity{get;set;}public decimal IncomingValue{get;set;}public decimal OutgoingValue{get;set;}public bool HasEstimatedOutgoingValue{get;set;}}
+internal record CardexRebuildEvent(DateTime Date,int Order,long Id,int Warehouse,decimal In,decimal Out,decimal Price,string Description,int UserId,string User,DateTime Created,string Doc,InventoryTransaction? Existing);

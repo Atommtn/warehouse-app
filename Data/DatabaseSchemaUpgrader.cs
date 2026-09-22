@@ -81,6 +81,26 @@ BEGIN
     );
     CREATE UNIQUE INDEX [IX_RolePagePermissions_Role_PageKey] ON [RolePagePermissions]([Role],[PageKey]);
 END;
+IF COL_LENGTH('Materials','UnitsNormalized') IS NULL ALTER TABLE [Materials] ADD [UnitsNormalized] bit NOT NULL CONSTRAINT [DF_Materials_UnitsNormalized] DEFAULT 0;
+IF COL_LENGTH('StockEntries','EnteredQuantity') IS NULL
+BEGIN
+ ALTER TABLE [StockEntries] ADD [EnteredQuantity] decimal(18,3) NOT NULL CONSTRAINT [DF_StockEntries_EnteredQuantity] DEFAULT 0;
+ ALTER TABLE [StockEntries] ADD [EnteredUnitName] nvarchar(100) NOT NULL CONSTRAINT [DF_StockEntries_EnteredUnitName] DEFAULT N'';
+ ALTER TABLE [StockEntries] ADD [ConversionFactor] decimal(18,6) NOT NULL CONSTRAINT [DF_StockEntries_ConversionFactor] DEFAULT 1;
+END;
+IF COL_LENGTH('StockWithdrawals','EnteredQuantity') IS NULL
+BEGIN
+ ALTER TABLE [StockWithdrawals] ADD [EnteredQuantity] decimal(18,3) NOT NULL CONSTRAINT [DF_StockWithdrawals_EnteredQuantity] DEFAULT 0;
+ ALTER TABLE [StockWithdrawals] ADD [EnteredUnitName] nvarchar(100) NOT NULL CONSTRAINT [DF_StockWithdrawals_EnteredUnitName] DEFAULT N'';
+ ALTER TABLE [StockWithdrawals] ADD [ConversionFactor] decimal(18,6) NOT NULL CONSTRAINT [DF_StockWithdrawals_ConversionFactor] DEFAULT 1;
+END;
+IF COL_LENGTH('RecipeIngredients','UnitName') IS NULL ALTER TABLE [RecipeIngredients] ADD [UnitName] nvarchar(100) NOT NULL CONSTRAINT [DF_RecipeIngredients_UnitName] DEFAULT N'';
+IF OBJECT_ID(N'[MaterialUnitConversions]',N'U') IS NULL
+BEGIN
+ CREATE TABLE [MaterialUnitConversions]([Id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_MaterialUnitConversions] PRIMARY KEY,[MaterialId] int NOT NULL,[UnitName] nvarchar(100) NOT NULL,[FactorToBaseUnit] decimal(18,6) NOT NULL,[IsLegacyStockUnit] bit NOT NULL,[IsActive] bit NOT NULL,CONSTRAINT [FK_MaterialUnitConversions_Materials] FOREIGN KEY([MaterialId]) REFERENCES [Materials]([Id]) ON DELETE CASCADE);
+ CREATE UNIQUE INDEX [IX_MaterialUnitConversions_MaterialId_UnitName] ON [MaterialUnitConversions]([MaterialId],[UnitName]);
+END;
+IF OBJECT_ID(N'[AppDataMigrations]',N'U') IS NULL CREATE TABLE [AppDataMigrations]([MigrationKey] nvarchar(200) NOT NULL CONSTRAINT [PK_AppDataMigrations] PRIMARY KEY,[AppliedAt] datetime2 NOT NULL);
 IF COL_LENGTH('StockWithdrawals', 'WarehouseId') IS NULL
 BEGIN
     ALTER TABLE [StockWithdrawals] ADD [WarehouseId] int NULL;
@@ -89,6 +109,9 @@ END;
 """);
 
         db.Database.ExecuteSqlRaw("""
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+BEGIN TRY
 IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'MAIN') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'MAIN',N'انبار اصلی');
 IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'SECOND') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'SECOND',N'انبار دوم');
 IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'BOX') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'BOX',N'انبار جعبه');
@@ -98,19 +121,22 @@ IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'COLD') INSERT INTO [War
 DECLARE @mainId int=(SELECT TOP(1) [Id] FROM [Warehouses] WHERE [Code]=N'MAIN');
 UPDATE [StockEntries] SET [WarehouseId]=@mainId WHERE [WarehouseId] IS NULL;
 UPDATE [StockWithdrawals] SET [WarehouseId]=@mainId WHERE [WarehouseId] IS NULL;
-INSERT INTO [WarehouseStocks] ([WarehouseId],[MaterialId],[Quantity],[MinStockLevel])
-SELECT @mainId,m.[Id],m.[CurrentStock],m.[MinStockLevel]
-FROM [Materials] m
-WHERE NOT EXISTS (SELECT 1 FROM [WarehouseStocks] s WHERE s.[WarehouseId]=@mainId AND s.[MaterialId]=m.[Id]);
+IF NOT EXISTS(SELECT 1 FROM [AppDataMigrations] WHERE [MigrationKey]=N'allocate-warehouses-and-rebuild-cardex-v1')
+BEGIN
+ INSERT INTO [WarehouseStocks] ([WarehouseId],[MaterialId],[Quantity],[MinStockLevel])
+ SELECT @mainId,m.[Id],m.[CurrentStock],m.[MinStockLevel]
+ FROM [Materials] m
+ WHERE NOT EXISTS (SELECT 1 FROM [WarehouseStocks] s WHERE s.[WarehouseId]=@mainId AND s.[MaterialId]=m.[Id]);
 
-INSERT INTO [InventoryTransactions]
-([DocumentNumber],[Type],[WarehouseId],[MaterialId],[IncomingQuantity],[OutgoingQuantity],[BalanceAfter],[UnitPrice],[TransactionDate],[Description],[CreatedByUserId],[CreatedByUsername])
-SELECT CONCAT(N'OPEN-',m.[Code]),0,@mainId,m.[Id],m.[CurrentStock],0,m.[CurrentStock],m.[PricePerUnit],SYSUTCDATETIME(),N'انتقال مانده اولیه هنگام فعال‌سازی چند انبار',0,N'system'
-FROM [Materials] m
-WHERE m.[CurrentStock]<>0 AND NOT EXISTS (SELECT 1 FROM [InventoryTransactions] t WHERE t.[DocumentNumber]=CONCAT(N'OPEN-',m.[Code]));
+ INSERT INTO [InventoryTransactions]
+ ([DocumentNumber],[Type],[WarehouseId],[MaterialId],[IncomingQuantity],[OutgoingQuantity],[BalanceAfter],[UnitPrice],[TransactionDate],[Description],[CreatedByUserId],[CreatedByUsername])
+ SELECT CONCAT(N'OPEN-',m.[Code]),0,@mainId,m.[Id],m.[CurrentStock],0,m.[CurrentStock],m.[PricePerUnit],SYSUTCDATETIME(),N'انتقال مانده اولیه هنگام فعال‌سازی چند انبار',0,N'system'
+ FROM [Materials] m
+ WHERE m.[CurrentStock]<>0 AND NOT EXISTS (SELECT 1 FROM [InventoryTransactions] t WHERE t.[DocumentNumber]=CONCAT(N'OPEN-',m.[Code]));
+END;
 
 DECLARE @pages TABLE([PageKey] nvarchar(100));
-INSERT INTO @pages VALUES (N'dashboard'),(N'materials'),(N'archive'),(N'warehouses'),(N'definitions'),(N'entry'),(N'withdrawal'),(N'transfer'),(N'warehouse-stock'),(N'cardex'),(N'history'),(N'prices'),(N'recipes'),(N'alerts'),(N'users');
+INSERT INTO @pages VALUES (N'dashboard'),(N'materials'),(N'archive'),(N'warehouses'),(N'unit-config'),(N'definitions'),(N'entry'),(N'withdrawal'),(N'transfer'),(N'warehouse-stock'),(N'cardex'),(N'history'),(N'prices'),(N'recipes'),(N'alerts'),(N'users');
 DECLARE @roles TABLE([Role] int); INSERT INTO @roles VALUES(0),(1),(2),(3),(4);
 INSERT INTO [RolePagePermissions]([Role],[PageKey],[IsAllowed])
 SELECT r.[Role],p.[PageKey],CASE
@@ -122,6 +148,50 @@ SELECT r.[Role],p.[PageKey],CASE
  ELSE 0 END
 FROM @roles r CROSS JOIN @pages p
 WHERE NOT EXISTS(SELECT 1 FROM [RolePagePermissions] x WHERE x.[Role]=r.[Role] AND x.[PageKey]=p.[PageKey]);
+
+IF NOT EXISTS(SELECT 1 FROM [AppDataMigrations] WHERE [MigrationKey]=N'normalize-units-v1')
+BEGIN
+ INSERT INTO [MaterialUnitConversions]([MaterialId],[UnitName],[FactorToBaseUnit],[IsLegacyStockUnit],[IsActive])
+ SELECT m.[Id],ISNULL(NULLIF(u.[Name],N''),N'واحد'),CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END,1,1 FROM [Materials] m LEFT JOIN [Units] u ON u.[Id]=m.[UnitId]
+ WHERE NOT EXISTS(SELECT 1 FROM [MaterialUnitConversions] c WHERE c.[MaterialId]=m.[Id] AND c.[UnitName]=ISNULL(NULLIF(u.[Name],N''),N'واحد'));
+ INSERT INTO [MaterialUnitConversions]([MaterialId],[UnitName],[FactorToBaseUnit],[IsLegacyStockUnit],[IsActive])
+ SELECT m.[Id],m.[BaseUnitName],1,0,1 FROM [Materials] m WHERE m.[BaseUnitName]<>N'' AND NOT EXISTS(SELECT 1 FROM [MaterialUnitConversions] c WHERE c.[MaterialId]=m.[Id] AND c.[UnitName]=m.[BaseUnitName]);
+ UPDATE e SET [EnteredQuantity]=e.[Quantity],[EnteredUnitName]=ISNULL(NULLIF(u.[Name],N''),N'واحد'),[ConversionFactor]=CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END,[Quantity]=e.[Quantity]*(CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END) FROM [StockEntries] e JOIN [Materials] m ON m.[Id]=e.[MaterialId] LEFT JOIN [Units] u ON u.[Id]=m.[UnitId];
+ UPDATE w SET [EnteredQuantity]=w.[Quantity],[EnteredUnitName]=ISNULL(NULLIF(u.[Name],N''),N'واحد'),[ConversionFactor]=CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END,[Quantity]=w.[Quantity]*(CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END) FROM [StockWithdrawals] w JOIN [Materials] m ON m.[Id]=w.[MaterialId] LEFT JOIN [Units] u ON u.[Id]=m.[UnitId];
+ UPDATE t SET [IncomingQuantity]=t.[IncomingQuantity]*(CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END),[OutgoingQuantity]=t.[OutgoingQuantity]*(CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END),[BalanceAfter]=t.[BalanceAfter]*(CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END),[UnitPrice]=t.[UnitPrice]/(CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END) FROM [InventoryTransactions] t JOIN [Materials] m ON m.[Id]=t.[MaterialId];
+ UPDATE ri SET [UnitName]=m.[BaseUnitName] FROM [RecipeIngredients] ri JOIN [Materials] m ON m.[Id]=ri.[MaterialId] WHERE ri.[UnitName]=N'';
+ UPDATE ws SET [Quantity]=ws.[Quantity]*(CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END),[MinStockLevel]=ws.[MinStockLevel]*(CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END) FROM [WarehouseStocks] ws JOIN [Materials] m ON m.[Id]=ws.[MaterialId];
+ UPDATE [Materials] SET [CurrentStock]=[CurrentStock]*(CASE WHEN [BaseQuantity]>0 THEN [BaseQuantity] ELSE 1 END),[MinStockLevel]=[MinStockLevel]*(CASE WHEN [BaseQuantity]>0 THEN [BaseQuantity] ELSE 1 END),[UnitsNormalized]=1;
+ INSERT INTO [AppDataMigrations] VALUES(N'normalize-units-v1',SYSUTCDATETIME());
+END;
+
+IF NOT EXISTS(SELECT 1 FROM [AppDataMigrations] WHERE [MigrationKey]=N'allocate-warehouses-and-rebuild-cardex-v1')
+BEGIN
+ DECLARE @main int=(SELECT [Id] FROM [Warehouses] WHERE [Code]=N'MAIN'),@box int=(SELECT [Id] FROM [Warehouses] WHERE [Code]=N'BOX'),@store int=(SELECT [Id] FROM [Warehouses] WHERE [Code]=N'STORE');
+ UPDATE e SET [WarehouseId]=CASE WHEN m.[Code] BETWEEN N'05000' AND N'05016' THEN @box WHEN m.[Code] BETWEEN N'07001' AND N'07005' THEN @store ELSE @main END FROM [StockEntries] e JOIN [Materials] m ON m.[Id]=e.[MaterialId];
+ UPDATE w SET [WarehouseId]=CASE WHEN m.[Code] BETWEEN N'05000' AND N'05016' THEN @box WHEN m.[Code] BETWEEN N'07001' AND N'07005' THEN @store ELSE @main END FROM [StockWithdrawals] w JOIN [Materials] m ON m.[Id]=w.[MaterialId];
+ UPDATE t SET [WarehouseId]=CASE WHEN m.[Code] BETWEEN N'05000' AND N'05016' THEN @box WHEN m.[Code] BETWEEN N'07001' AND N'07005' THEN @store ELSE @main END FROM [InventoryTransactions] t JOIN [Materials] m ON m.[Id]=t.[MaterialId] WHERE t.[Type] IN(1,2);
+ INSERT INTO [WarehouseStocks]([WarehouseId],[MaterialId],[Quantity],[MinStockLevel]) SELECT CASE WHEN m.[Code] BETWEEN N'05000' AND N'05016' THEN @box WHEN m.[Code] BETWEEN N'07001' AND N'07005' THEN @store ELSE @main END,m.[Id],0,m.[MinStockLevel] FROM [Materials] m WHERE NOT EXISTS(SELECT 1 FROM [WarehouseStocks] ws WHERE ws.[MaterialId]=m.[Id] AND ws.[WarehouseId]=CASE WHEN m.[Code] BETWEEN N'05000' AND N'05016' THEN @box WHEN m.[Code] BETWEEN N'07001' AND N'07005' THEN @store ELSE @main END);
+ UPDATE target SET target.[Quantity]=target.[Quantity]+source.[Quantity] FROM [WarehouseStocks] target JOIN [Materials] m ON m.[Id]=target.[MaterialId] JOIN [WarehouseStocks] source ON source.[MaterialId]=target.[MaterialId] AND source.[WarehouseId]=@main AND source.[Id]<>target.[Id] WHERE target.[WarehouseId]=CASE WHEN m.[Code] BETWEEN N'05000' AND N'05016' THEN @box WHEN m.[Code] BETWEEN N'07001' AND N'07005' THEN @store ELSE @main END;
+ DELETE source FROM [WarehouseStocks] source JOIN [Materials] m ON m.[Id]=source.[MaterialId] WHERE source.[WarehouseId]=@main AND (m.[Code] BETWEEN N'05000' AND N'05016' OR m.[Code] BETWEEN N'07001' AND N'07005');
+ DECLARE @cutover datetime2=ISNULL((SELECT MIN([CreatedAt]) FROM [InventoryTransactions] WHERE [DocumentNumber] LIKE N'OPEN-%'),SYSUTCDATETIME());
+ DELETE FROM [InventoryTransactions] WHERE [DocumentNumber] LIKE N'OPEN-%' OR [DocumentNumber] LIKE N'LEGACY-%' OR [DocumentNumber] LIKE N'RECON-%' OR [Type]=5;
+ ;WITH ev AS (
+  SELECT CONCAT(N'LEGACY-IN-',e.[Id]) doc,1 typ,e.[WarehouseId] wid,e.[MaterialId] mid,e.[Quantity] incoming,CAST(0 AS decimal(18,3)) outgoing,e.[PricePerUnit]/CASE WHEN e.[ConversionFactor]>0 THEN e.[ConversionFactor] ELSE 1 END price,e.[EntryDate] dt,e.[Notes] descr,e.[CreatedByUserId] uid,e.[CreatedByUsername] uname,e.[CreatedAt] created,e.[Id] sourceid FROM [StockEntries] e WHERE e.[CreatedAt]<=@cutover
+  UNION ALL SELECT CONCAT(N'LEGACY-OUT-',w.[Id]),2,w.[WarehouseId],w.[MaterialId],0,w.[Quantity],CAST(0 AS decimal(18,2)),w.[WithdrawalDate],w.[Reason],w.[CreatedByUserId],w.[CreatedByUsername],w.[CreatedAt],w.[Id] FROM [StockWithdrawals] w WHERE w.[Status]=1 AND w.[CreatedAt]<=@cutover
+ ), balances AS (SELECT *,SUM(incoming-outgoing) OVER(PARTITION BY wid,mid ORDER BY dt,typ,sourceid ROWS UNBOUNDED PRECEDING) bal FROM ev)
+ INSERT INTO [InventoryTransactions]([DocumentNumber],[Type],[WarehouseId],[MaterialId],[IncomingQuantity],[OutgoingQuantity],[BalanceAfter],[UnitPrice],[TransactionDate],[Description],[CreatedByUserId],[CreatedByUsername],[CreatedAt]) SELECT doc,typ,wid,mid,incoming,outgoing,bal,price,dt,descr,uid,uname,created FROM balances;
+ ;WITH hist AS(SELECT [WarehouseId],[MaterialId],SUM([IncomingQuantity]-[OutgoingQuantity]) qty FROM [InventoryTransactions] WHERE [DocumentNumber] LIKE N'LEGACY-%' GROUP BY [WarehouseId],[MaterialId]), postcutover AS(SELECT [WarehouseId],[MaterialId],SUM([IncomingQuantity]-[OutgoingQuantity]) qty FROM [InventoryTransactions] WHERE [CreatedAt]>@cutover AND [DocumentNumber] NOT LIKE N'LEGACY-%' AND [DocumentNumber] NOT LIKE N'RECON-%' GROUP BY [WarehouseId],[MaterialId])
+ INSERT INTO [InventoryTransactions]([DocumentNumber],[Type],[WarehouseId],[MaterialId],[IncomingQuantity],[OutgoingQuantity],[BalanceAfter],[UnitPrice],[TransactionDate],[Description],[CreatedByUserId],[CreatedByUsername])
+ SELECT CONCAT(N'RECON-',m.[Code],N'-',ws.[WarehouseId]),5,ws.[WarehouseId],ws.[MaterialId],CASE WHEN ws.[Quantity]-ISNULL(p.qty,0)-ISNULL(h.qty,0)>0 THEN ws.[Quantity]-ISNULL(p.qty,0)-ISNULL(h.qty,0) ELSE 0 END,CASE WHEN ws.[Quantity]-ISNULL(p.qty,0)-ISNULL(h.qty,0)<0 THEN -(ws.[Quantity]-ISNULL(p.qty,0)-ISNULL(h.qty,0)) ELSE 0 END,ws.[Quantity]-ISNULL(p.qty,0),m.[PricePerUnit],@cutover,N'اصلاح شفاف مغایرت مانده با سوابق قدیمی',0,N'system' FROM [WarehouseStocks] ws JOIN [Materials] m ON m.[Id]=ws.[MaterialId] LEFT JOIN hist h ON h.[WarehouseId]=ws.[WarehouseId] AND h.[MaterialId]=ws.[MaterialId] LEFT JOIN postcutover p ON p.[WarehouseId]=ws.[WarehouseId] AND p.[MaterialId]=ws.[MaterialId] WHERE ws.[Quantity]-ISNULL(p.qty,0)<>ISNULL(h.qty,0);
+ INSERT INTO [AppDataMigrations] VALUES(N'allocate-warehouses-and-rebuild-cardex-v1',SYSUTCDATETIME());
+END;
+COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+ IF @@TRANCOUNT>0 ROLLBACK TRANSACTION;
+ THROW;
+END CATCH;
 """);
     }
 }

@@ -86,15 +86,16 @@ else
             {
                 var mat = materials.FirstOrDefault(m => m.Id == ing.MaterialId);
                 <div class="ingredient-row">
+                    <input class="form-control ingredient-search" value="@SearchOf(ing)" @oninput="e=>SetSearch(ing,e.Value?.ToString()??string.Empty)" placeholder="🔍 جستجوی نام یا کد ماده..." />
                     <select class="form-control" @bind="ing.MaterialId">
                         <option value="0">انتخاب ماده...</option>
-                        @foreach (var m in materials)
+                        @foreach (var m in FilterMaterials(ing))
                         {
                             <option value="@m.Id">[@m.Code] @m.Name (@m.Unit?.Name — @m.BaseQuantity @m.BaseUnitName/واحد، فی @m.PricePerUnit.ToString("N0"))</option>
                         }
                     </select>
                     <input class="form-control qty-input" type="number" @bind="ing.Quantity" min="0" step="0.001" />
-                    <span class="unit-label">@(mat != null ? mat.BaseUnitName : "واحد")</span>
+                    <select class="form-control unit-select" @bind="ing.UnitName">@if(mat!=null){@foreach(var u in UnitsOf(mat.Id)){<option value="@u.UnitName">@u.UnitName</option>}}</select>
                     <button class="btn btn-sm btn-danger" @onclick="()=>mainIngredients.Remove(ing)">✕</button>
                 </div>
             }
@@ -108,15 +109,16 @@ else
             {
                 var mat = materials.FirstOrDefault(m => m.Id == ing.MaterialId);
                 <div class="ingredient-row">
+                    <input class="form-control ingredient-search" value="@SearchOf(ing)" @oninput="e=>SetSearch(ing,e.Value?.ToString()??string.Empty)" placeholder="🔍 جستجوی نام یا کد ماده..." />
                     <select class="form-control" @bind="ing.MaterialId">
                         <option value="0">انتخاب ماده...</option>
-                        @foreach (var m in materials)
+                        @foreach (var m in FilterMaterials(ing))
                         {
                             <option value="@m.Id">[@m.Code] @m.Name (@m.Unit?.Name — @m.BaseQuantity @m.BaseUnitName/واحد، فی @m.PricePerUnit.ToString("N0"))</option>
                         }
                     </select>
                     <input class="form-control qty-input" type="number" @bind="ing.Quantity" min="0" step="0.001" />
-                    <span class="unit-label">@(mat != null ? mat.BaseUnitName : "واحد")</span>
+                    <select class="form-control unit-select" @bind="ing.UnitName">@if(mat!=null){@foreach(var u in UnitsOf(mat.Id)){<option value="@u.UnitName">@u.UnitName</option>}}</select>
                     <button class="btn btn-sm btn-danger" @onclick="()=>toppingIngredients.Remove(ing)">✕</button>
                 </div>
             }
@@ -216,7 +218,7 @@ else
                     {
                         <tr>
                             <td><code>@line.MaterialCode</code></td><td>@line.MaterialName</td>
-                            <td>@(line.IsTopping ? "روکاری" : "اصلی")</td><td>@line.Quantity.ToString("N3")</td>
+                            <td>@(line.IsTopping ? "روکاری" : "اصلی")</td><td>@line.Quantity.ToString("N3") @line.InputUnitName</td>
                             <td>@line.BaseUnitName</td><td>@line.StockUnitName</td><td>@line.ConversionFactor.ToString("N3")</td>
                             <td>@line.LastPurchasePrice.ToString("N0")</td><td>@line.PricePerBaseUnit.ToString("N2")</td><td><strong>@line.LineCost.ToString("N0")</strong></td>
                         </tr>
@@ -231,6 +233,7 @@ else
     List<Recipe>?  recipes;
     List<Material> materials = new();
     Dictionary<int, RecipeCostResult> costCache = new();
+    Dictionary<int,List<MaterialUnitConversion>> unitCache=new();Dictionary<RecipeIngredient,string> ingredientSearch=new();
 
     bool   showForm;
     bool   showCalc;
@@ -248,6 +251,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         materials = await Warehouse.GetMaterialsAsync();
+        foreach(var m in materials)unitCache[m.Id]=await Warehouse.GetMaterialUnitsAsync(m.Id);
         await LoadRecipes();
     }
 
@@ -280,8 +284,8 @@ else
             Id=r.Id, Name=r.Name, Notes=r.Notes,
             BakingLossPercent=r.BakingLossPercent, PieceWeightGrams=r.PieceWeightGrams
         };
-        mainIngredients    = r.Ingredients.Where(i=>!i.IsTopping).Select(i=>new RecipeIngredient{MaterialId=i.MaterialId,Quantity=i.Quantity,IsTopping=false}).ToList();
-        toppingIngredients = r.Ingredients.Where(i=>i.IsTopping ).Select(i=>new RecipeIngredient{MaterialId=i.MaterialId,Quantity=i.Quantity,IsTopping=true }).ToList();
+        mainIngredients    = r.Ingredients.Where(i=>!i.IsTopping).Select(i=>new RecipeIngredient{MaterialId=i.MaterialId,Quantity=i.Quantity,UnitName=i.UnitName,IsTopping=false}).ToList();
+        toppingIngredients = r.Ingredients.Where(i=>i.IsTopping ).Select(i=>new RecipeIngredient{MaterialId=i.MaterialId,Quantity=i.Quantity,UnitName=i.UnitName,IsTopping=true }).ToList();
         editId   = r.Id;
         errorMsg = "";
         showForm = true;
@@ -312,6 +316,7 @@ else
         form.Ingredients = validMain
             .Concat(toppingIngredients.Where(i=>i.MaterialId>0 && i.Quantity>0))
             .ToList();
+        foreach(var ing in form.Ingredients)if(string.IsNullOrWhiteSpace(ing.UnitName))ing.UnitName=UnitsOf(ing.MaterialId).FirstOrDefault()?.UnitName??materials.First(x=>x.Id==ing.MaterialId).BaseUnitName;
 
         if (editId == 0)
             await Warehouse.AddRecipeAsync(form);
@@ -334,4 +339,7 @@ else
     void Cancel()     { showForm = false; errorMsg = ""; }
     void AddMain()    => mainIngredients.Add(new RecipeIngredient { IsTopping = false });
     void AddTopping() => toppingIngredients.Add(new RecipeIngredient { IsTopping = true });
+    string SearchOf(RecipeIngredient i)=>ingredientSearch.TryGetValue(i,out var s)?s:"";void SetSearch(RecipeIngredient i,string s)=>ingredientSearch[i]=s;
+    IEnumerable<Material> FilterMaterials(RecipeIngredient i){var s=SearchOf(i);return string.IsNullOrWhiteSpace(s)?materials:materials.Where(m=>m.Name.Contains(s,StringComparison.OrdinalIgnoreCase)||m.Code.Contains(s,StringComparison.OrdinalIgnoreCase));}
+    List<MaterialUnitConversion> UnitsOf(int id)=>unitCache.TryGetValue(id,out var u)?u:new();
 }

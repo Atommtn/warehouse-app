@@ -82,7 +82,7 @@ public class PriceAnalysisService
             MaterialId = m.Id,
             MaterialName = m.Name,
             MaterialCode = m.Code,
-            Unit = m.Unit?.Name,
+            Unit = m.BaseUnitName,
             CurrentStock = m.CurrentStock
         };
 
@@ -94,20 +94,21 @@ public class PriceAnalysisService
 
         // میانگین موزون: Σ(quantity × price) / Σ(quantity)
         decimal totalQty = entries.Sum(e => e.Quantity);
-        decimal totalValue = entries.Sum(e => e.Quantity * e.PricePerUnit);
+        decimal totalValue = entries.Sum(e => (e.EnteredQuantity>0?e.EnteredQuantity:e.Quantity) * e.PricePerUnit);
         analysis.WeightedAvgPrice = totalQty > 0 ? totalValue / totalQty : 0;
 
-        analysis.LastPrice  = entries.Last().PricePerUnit;
-        analysis.FirstPrice = entries.First().PricePerUnit;
-        analysis.MinPrice   = entries.Min(e => e.PricePerUnit);
-        analysis.MaxPrice   = entries.Max(e => e.PricePerUnit);
+        decimal BasePrice(StockEntry e)=>e.PricePerUnit/(e.ConversionFactor<=0?1:e.ConversionFactor);
+        analysis.LastPrice  = BasePrice(entries.Last());
+        analysis.FirstPrice = BasePrice(entries.First());
+        analysis.MinPrice   = entries.Min(BasePrice);
+        analysis.MaxPrice   = entries.Max(BasePrice);
         analysis.StockValue = m.CurrentStock * analysis.WeightedAvgPrice;
 
         // تغییر قیمت نسبت به خرید قبلی
         if (entries.Count >= 2)
         {
-            var prev = entries[entries.Count - 2].PricePerUnit;
-            var last = entries.Last().PricePerUnit;
+            var prev = BasePrice(entries[entries.Count - 2]);
+            var last = BasePrice(entries.Last());
             analysis.PriceChange = last - prev;
             analysis.PriceChangePercent = prev > 0 ? Math.Round((last - prev) / prev * 100, 1) : 0;
             analysis.Trend = analysis.PriceChange > 0 ? PriceTrend.Up
@@ -124,13 +125,13 @@ public class PriceAnalysisService
         foreach (var e in entries)
         {
             cumQty   += e.Quantity;
-            cumValue += e.Quantity * e.PricePerUnit;
+            cumValue += (e.EnteredQuantity>0?e.EnteredQuantity:e.Quantity) * e.PricePerUnit;
             analysis.History.Add(new PriceHistory
             {
                 EntryId       = e.Id,
                 EntryDate     = e.EntryDate,
                 Quantity      = e.Quantity,
-                Price         = e.PricePerUnit,
+                Price         = BasePrice(e),
                 CumulativeAvg = cumQty > 0 ? Math.Round(cumValue / cumQty, 0) : 0
             });
         }

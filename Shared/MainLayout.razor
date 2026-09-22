@@ -29,6 +29,7 @@
             @if(Auth.CanAccess("materials")){<li class="@A("materials")"><button @onclick='()=>Go("materials")'>📦 مواد اولیه</button></li>}
             @if(Auth.CanAccess("archive")){<li class="@A("archive")"><button @onclick='()=>Go("archive")'>🗄️ آرشیو مواد اولیه</button></li>}
             @if(Auth.CanAccess("warehouses")){<li class="@A("warehouses")"><button @onclick='()=>Go("warehouses")'>🏬 انبارها و تفصیل</button></li>}
+            @if(Auth.CanAccess("unit-config")){<li class="@A("unit-config")"><button @onclick='()=>Go("unit-config")'>⚖️ بازتعریف واحدها</button></li>}
             @if(Auth.CanAccess("definitions")){
             <li class="nav-parent @(IsDefinitions()?"active":"")">
                 <button @onclick="ToggleDefs" class="nav-parent-btn">
@@ -83,6 +84,7 @@
         else if  (page == "materials" && Auth.CanAccess(page))       { <MaterialsPage /> }
         else if  (page == "archive" && Auth.CanAccess(page))         { <ArchivePage /> }
         else if  (page == "warehouses" && Auth.CanAccess(page))      { <WarehousesPage /> }
+        else if  (page == "unit-config" && Auth.CanAccess(page))      { <UnitConfigurationPage /> }
         else if  (page == "definitions" && Auth.CanAccess(page))     { <DefinitionsPage DefaultTab="@defsTab" /> }
         else if  (page == "entry" && Auth.CanAccess(page))           { <StockEntryPage /> }
         else if  (page == "withdrawal" && Auth.CanAccess(page))      { <WithdrawalPage /> }

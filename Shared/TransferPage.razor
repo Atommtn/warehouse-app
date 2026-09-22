@@ -10,6 +10,7 @@
  <div class="form-group"><label>جستجوی کالا</label><input class="form-input" @bind="search" @bind:event="oninput" placeholder="نام یا کد کالا..." /></div>
  <div class="form-group"><label>کالا *</label><select class="form-input" @bind="materialId"><option value="0">انتخاب کنید...</option>@foreach(var m in FilteredMaterials){<option value="@m.Id">[@m.Code] @m.Name</option>}</select></div>
  <div class="form-group"><label>مقدار *</label><input class="form-input" type="number" step="0.001" @bind="quantity" /></div>
+ <div class="form-group"><label>واحد *</label><select class="form-input" @bind="unitName">@foreach(var u in units){<option value="@u.UnitName">@u.UnitName</option>}</select></div>
  <div class="form-group"><label>تاریخ انتقال</label><PersianDatePicker Value="date" ValueChanged="@(x=>date=x)" /></div>
  <div class="form-group"><label>توضیحات</label><input class="form-input" @bind="notes" /></div>
 </div>
@@ -17,8 +18,9 @@
 <button class="btn btn-primary" @onclick="Submit">ثبت انتقال</button></div>
 
 @code{
- List<Warehouse> warehouses=new(); List<Material> materials=new(); int sourceId,destinationId,materialId; decimal quantity; DateTime date=DateTime.Today; string notes="",search="",message=""; bool success;
+ List<Warehouse> warehouses=new(); List<Material> materials=new();List<MaterialUnitConversion> units=new(); int sourceId,destinationId,_materialId; decimal quantity; DateTime date=DateTime.Today; string notes="",search="",message="",unitName=""; bool success;int materialId{get=>_materialId;set{if(_materialId==value)return;_materialId=value;_=LoadUnits();}}
  IEnumerable<Material> FilteredMaterials=>string.IsNullOrWhiteSpace(search)?materials:materials.Where(x=>x.Name.Contains(search,StringComparison.OrdinalIgnoreCase)||x.Code.Contains(search,StringComparison.OrdinalIgnoreCase));
  protected override async Task OnInitializedAsync(){warehouses=await WarehouseService.GetWarehousesAsync();materials=await WarehouseService.GetMaterialsAsync();}
- async Task Submit(){try{if(sourceId==0||destinationId==0||materialId==0)throw new Exception("انبار مبدأ، مقصد و کالا را انتخاب کنید");await WarehouseService.TransferAsync(sourceId,destinationId,materialId,quantity,date,notes,Auth.CurrentUser!.Id,Auth.CurrentUser.Username);success=true;message="انتقال با موفقیت ثبت و در کاردکس درج شد";quantity=0;notes="";}catch(Exception ex){success=false;message=ex.Message;}}
+ async Task LoadUnits(){units=materialId>0?await WarehouseService.GetMaterialUnitsAsync(materialId):new();unitName=units.FirstOrDefault()?.UnitName??"";StateHasChanged();}
+ async Task Submit(){try{if(sourceId==0||destinationId==0||materialId==0)throw new Exception("انبار مبدأ، مقصد و کالا را انتخاب کنید");await WarehouseService.TransferAsync(sourceId,destinationId,materialId,quantity,unitName,date,notes,Auth.CurrentUser!.Id,Auth.CurrentUser.Username);success=true;message="انتقال با موفقیت ثبت و در کاردکس درج شد";quantity=0;notes="";}catch(Exception ex){success=false;message=ex.Message;}}
 }

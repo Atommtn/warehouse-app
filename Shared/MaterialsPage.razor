@@ -98,8 +98,8 @@
                         { <span class="text-muted">@m.BaseQuantity</span> }
                     </td>
                     <td>@m.BaseUnitName</td>
-                    <td>@m.CurrentStock.ToString("N2")</td>
-                    <td>@m.MinStockLevel.ToString("N2")</td>
+                    <td>@m.CurrentStock.ToString("N2") @m.BaseUnitName</td>
+                    <td>@m.MinStockLevel.ToString("N2") @m.BaseUnitName</td>
                     <td>@(m.Supplier?.Name??"-")</td>
                     <td>
                         @if (m.CurrentStock<=m.MinStockLevel)          { <span class="status-badge danger">خرید</span> }

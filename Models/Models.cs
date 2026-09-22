@@ -66,6 +66,7 @@ public class Material
     // مثال: ۱ گونی = ۴۰ کیلوگرم → BaseQuantity=40, BaseUnitName="کیلوگرم"
     public decimal BaseQuantity { get; set; } = 1;
     public string BaseUnitName { get; set; } = "کیلوگرم";
+    public bool UnitsNormalized { get; set; }
     public List<StockEntry> Entries { get; set; } = new();
     public List<StockWithdrawal> Withdrawals { get; set; } = new();
 }
@@ -88,6 +89,9 @@ public class StockEntry
     public bool PriceConfirmed { get; set; }
     public string PriceConfirmedBy { get; set; } = "";
     public DateTime? PriceConfirmedAt { get; set; }
+    public decimal EnteredQuantity { get; set; }
+    public string EnteredUnitName { get; set; } = "";
+    public decimal ConversionFactor { get; set; } = 1;
 }
 
 public class StockWithdrawal
@@ -108,6 +112,9 @@ public class StockWithdrawal
     public string? RejectReason { get; set; }
     public int? WarehouseId { get; set; }
     public Warehouse? Warehouse { get; set; }
+    public decimal EnteredQuantity { get; set; }
+    public string EnteredUnitName { get; set; } = "";
+    public decimal ConversionFactor { get; set; } = 1;
 }
 
 public enum WithdrawalStatus { Pending, Approved, Rejected }
@@ -204,4 +211,16 @@ public class RecipeIngredient
     public Material? Material { get; set; }
     public decimal Quantity { get; set; }   // مقدار بر اساس BaseUnitName ماده
     public bool IsTopping { get; set; }
+    public string UnitName { get; set; } = "";
+}
+
+public class MaterialUnitConversion
+{
+    public int Id { get; set; }
+    public int MaterialId { get; set; }
+    public Material? Material { get; set; }
+    public string UnitName { get; set; } = "";
+    public decimal FactorToBaseUnit { get; set; } = 1;
+    public bool IsLegacyStockUnit { get; set; }
+    public bool IsActive { get; set; } = true;
 }
