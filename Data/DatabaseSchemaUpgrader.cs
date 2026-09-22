@@ -67,6 +67,20 @@ BEGIN
     ALTER TABLE [StockEntries] ADD [WarehouseId] int NULL;
     ALTER TABLE [StockEntries] ADD CONSTRAINT [FK_StockEntries_Warehouses] FOREIGN KEY ([WarehouseId]) REFERENCES [Warehouses]([Id]);
 END;
+IF COL_LENGTH('StockEntries', 'PriceConfirmed') IS NULL
+BEGIN
+    ALTER TABLE [StockEntries] ADD [PriceConfirmed] bit NOT NULL CONSTRAINT [DF_StockEntries_PriceConfirmed] DEFAULT 0;
+    ALTER TABLE [StockEntries] ADD [PriceConfirmedBy] nvarchar(200) NOT NULL CONSTRAINT [DF_StockEntries_PriceConfirmedBy] DEFAULT N'';
+    ALTER TABLE [StockEntries] ADD [PriceConfirmedAt] datetime2 NULL;
+END;
+IF OBJECT_ID(N'[RolePagePermissions]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [RolePagePermissions](
+      [Id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_RolePagePermissions] PRIMARY KEY,
+      [Role] int NOT NULL,[PageKey] nvarchar(100) NOT NULL,[IsAllowed] bit NOT NULL
+    );
+    CREATE UNIQUE INDEX [IX_RolePagePermissions_Role_PageKey] ON [RolePagePermissions]([Role],[PageKey]);
+END;
 IF COL_LENGTH('StockWithdrawals', 'WarehouseId') IS NULL
 BEGIN
     ALTER TABLE [StockWithdrawals] ADD [WarehouseId] int NULL;
@@ -94,6 +108,20 @@ INSERT INTO [InventoryTransactions]
 SELECT CONCAT(N'OPEN-',m.[Code]),0,@mainId,m.[Id],m.[CurrentStock],0,m.[CurrentStock],m.[PricePerUnit],SYSUTCDATETIME(),N'انتقال مانده اولیه هنگام فعال‌سازی چند انبار',0,N'system'
 FROM [Materials] m
 WHERE m.[CurrentStock]<>0 AND NOT EXISTS (SELECT 1 FROM [InventoryTransactions] t WHERE t.[DocumentNumber]=CONCAT(N'OPEN-',m.[Code]));
+
+DECLARE @pages TABLE([PageKey] nvarchar(100));
+INSERT INTO @pages VALUES (N'dashboard'),(N'materials'),(N'archive'),(N'warehouses'),(N'definitions'),(N'entry'),(N'withdrawal'),(N'transfer'),(N'warehouse-stock'),(N'cardex'),(N'history'),(N'prices'),(N'recipes'),(N'alerts'),(N'users');
+DECLARE @roles TABLE([Role] int); INSERT INTO @roles VALUES(0),(1),(2),(3),(4);
+INSERT INTO [RolePagePermissions]([Role],[PageKey],[IsAllowed])
+SELECT r.[Role],p.[PageKey],CASE
+ WHEN r.[Role]=0 THEN 1
+ WHEN r.[Role]=1 AND p.[PageKey]<>N'users' THEN 1
+ WHEN r.[Role]=2 AND p.[PageKey] IN(N'dashboard',N'materials',N'definitions',N'withdrawal',N'transfer',N'warehouse-stock',N'cardex',N'history',N'prices',N'recipes',N'alerts') THEN 1
+ WHEN r.[Role]=3 AND p.[PageKey] IN(N'dashboard',N'materials',N'withdrawal',N'transfer',N'warehouse-stock',N'cardex',N'history',N'alerts') THEN 1
+ WHEN r.[Role]=4 AND p.[PageKey] IN(N'dashboard',N'materials',N'warehouse-stock',N'cardex',N'history',N'prices',N'recipes',N'alerts') THEN 1
+ ELSE 0 END
+FROM @roles r CROSS JOIN @pages p
+WHERE NOT EXISTS(SELECT 1 FROM [RolePagePermissions] x WHERE x.[Role]=r.[Role] AND x.[PageKey]=p.[PageKey]);
 """);
     }
 }

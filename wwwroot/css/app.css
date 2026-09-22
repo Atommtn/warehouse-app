@@ -239,6 +239,22 @@ html, body { height: 100%; font-family: 'Vazirmatn', sans-serif; background: var
 /* ── Btn Success ── */
 .btn-success { background:#0e9f6e; color:#fff; }
 .btn-success:hover { background:#057a55; }
+.btn-warning { background:#f59e0b; color:#fff; }
+.btn-warning:hover { background:#d97706; }
+
+.permission-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.6rem; margin:1rem 0; }
+.permission-item { display:flex; align-items:center; gap:.55rem; background:#f8fafc; border:1px solid var(--border); padding:.65rem .8rem; border-radius:8px; cursor:pointer; }
+.permission-item input { width:18px; height:18px; accent-color:var(--primary); }
+.permission-message { display:inline-block; margin:0 .75rem; }
+
+.price-chart-card { margin:1rem 0; }
+.chart-summary { display:flex; flex-wrap:wrap; gap:1.25rem; padding:.8rem 0; font-size:.9rem; }
+.price-svg-wrap { overflow-x:auto; background:#fff; border:1px solid var(--border); border-radius:10px; padding:.5rem; }
+.price-svg { width:100%; min-width:650px; height:300px; }
+.chart-axis { stroke:#94a3b8; stroke-width:1; }
+.chart-line { stroke:#2563eb; stroke-width:4; stroke-linejoin:round; stroke-linecap:round; }
+.chart-dot { fill:#fff; stroke:#2563eb; stroke-width:3; }
+.movement-quantity { font-size:.92rem; line-height:1.8; }
 
 /* ── Nav Divider ── */
 .nav-divider { height:1px; background:rgba(255,255,255,.1); margin:.5rem 1rem; }
@@ -485,4 +501,3 @@ code { background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:.78rem;
 .unit-label { min-width: 60px; font-size: .85rem; color: #666; font-weight: 600; padding: 0 4px; }
 .conversion-badge { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 12px; font-size: .8rem; }
 .form-hint { display: block; font-size: .78rem; color: #888; margin-top: 3px; }
-

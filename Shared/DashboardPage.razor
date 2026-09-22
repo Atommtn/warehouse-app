@@ -14,6 +14,20 @@
 
 @if (loaded)
 {
+    <div class="form-card movement-filters"><div class="form-grid">
+        <div class="form-group"><label>از تاریخ</label><PersianDatePicker Value="reportFrom" ValueChanged="@(x=>reportFrom=x)" /></div>
+        <div class="form-group"><label>تا تاریخ</label><PersianDatePicker Value="reportTo" ValueChanged="@(x=>reportTo=x)" /></div>
+        <div class="form-group"><label>انبار</label><select class="form-input" @bind="reportWarehouseId"><option value="0">همه انبارها</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
+        <div class="form-group"><label>ماده</label><select class="form-input" @bind="reportMaterialId"><option value="0">همه مواد</option>@foreach(var m in materials){<option value="@m.Id">[@m.Code] @m.Name</option>}</select></div>
+    </div><button class="btn btn-primary" @onclick="LoadMovement">اعمال فیلتر</button></div>
+    <div class="stats-grid">
+      <div class="stat-card blue"><div class="stat-icon">⬆️</div><div class="stat-info"><div class="stat-value movement-quantity">@QuantitySummary(true)</div><div class="stat-label">حجم ورود به تفکیک واحد</div></div></div>
+      <div class="stat-card green"><div class="stat-icon">💵</div><div class="stat-info"><div class="stat-value">@movement.IncomingValue.ToString("N0") ﷼</div><div class="stat-label">مبلغ ورود</div></div></div>
+      <div class="stat-card orange"><div class="stat-icon">⬇️</div><div class="stat-info"><div class="stat-value movement-quantity">@QuantitySummary(false)</div><div class="stat-label">حجم خروج به تفکیک واحد</div></div></div>
+      <div class="stat-card red"><div class="stat-icon">💸</div><div class="stat-info"><div class="stat-value">@movement.OutgoingValue.ToString("N0") ﷼</div><div class="stat-label">مبلغ خروج</div></div></div>
+    </div>
+    <div class="section-title">گردش مواد در بازه انتخابی</div>
+    <div class="table-responsive"><table class="data-table"><thead><tr><th>کد</th><th>ماده</th><th>ورود</th><th>مبلغ ورود</th><th>خروج</th><th>مبلغ خروج</th><th>خالص گردش</th></tr></thead><tbody>@foreach(var r in movement.Rows.OrderByDescending(x=>x.IncomingValue+x.OutgoingValue)){<tr><td><code>@r.MaterialCode</code></td><td>@r.MaterialName</td><td>@r.IncomingQuantity.ToString("N3") @r.Unit</td><td>@r.IncomingValue.ToString("N0")</td><td>@r.OutgoingQuantity.ToString("N3") @r.Unit</td><td>@r.OutgoingValue.ToString("N0") @if(r.HasEstimatedOutgoingValue){<small class="status-badge warning">برآوردی</small>}</td><td>@((r.IncomingQuantity-r.OutgoingQuantity).ToString("N3"))</td></tr>}</tbody></table></div>
     <div class="stats-grid">
         <div class="stat-card blue">
             <div class="stat-icon">📦</div>
@@ -122,6 +136,7 @@
     decimal totalValue; int totalMaterials,lowStockCount,alertCount,pendingCount;
     int? rejectingId; string rejectReason="";
     string materialSearch="";
+    List<WarehouseApp.Models.Warehouse> warehouses=new(); MovementDashboard movement=new(); DateTime reportFrom=DateTime.Today.AddDays(-30),reportTo=DateTime.Today;int reportWarehouseId,reportMaterialId;
     IEnumerable<Material> FilteredMaterials => string.IsNullOrWhiteSpace(materialSearch) ? materials : materials.Where(x=>x.Name.Contains(materialSearch,StringComparison.OrdinalIgnoreCase)||x.Code.Contains(materialSearch,StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnInitializedAsync() => await Load();
@@ -129,12 +144,16 @@
     async Task Load()
     {
         materials = await Warehouse.GetMaterialsAsync();
+        warehouses=await Warehouse.GetWarehousesAsync();
         alerts = await Warehouse.GetAlertsAsync();
         var s = await Warehouse.GetDashboardStatsAsync();
         (totalValue,totalMaterials,lowStockCount,alertCount,pendingCount) = s;
         if (Auth.CanApprove) pendingWithdrawals = await Warehouse.GetPendingWithdrawalsAsync();
         loaded = true;
+        await LoadMovement();
     }
+    async Task LoadMovement()=>movement=await Warehouse.GetMovementDashboardAsync(reportFrom,reportTo,reportWarehouseId==0?null:reportWarehouseId,reportMaterialId==0?null:reportMaterialId);
+    string QuantitySummary(bool incoming){var groups=movement.Rows.GroupBy(x=>string.IsNullOrWhiteSpace(x.Unit)?"واحد":x.Unit).Select(g=>$"{g.Sum(x=>incoming?x.IncomingQuantity:x.OutgoingQuantity):N3} {g.Key}").Where(x=>!x.StartsWith("0.000 "));return groups.Any()?string.Join(" | ",groups):"0";}
 
     async Task Approve(int id) { await Warehouse.ApproveWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username); await Load(); }
     void ShowReject(int id) { rejectingId=id; rejectReason=""; }

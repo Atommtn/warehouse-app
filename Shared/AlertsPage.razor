@@ -1,6 +1,7 @@
 @using WarehouseApp.Services
 @using WarehouseApp.Models
 @inject WarehouseService Warehouse
+@inject AuthService Auth
 
 <div class="page-header">
     <h2>🔔 هشدارهای انبار</h2>
@@ -13,7 +14,7 @@
 
 @if (loaded)
 {
-    @if (!alerts.Any())
+    @if (!alerts.Any() && !invalidPrices.Any())
     {
         <div class="empty-state"><span class="empty-icon">✅</span><p>هیچ هشداری وجود ندارد.</p></div>
     }
@@ -23,7 +24,14 @@
             <span class="badge-count red">@lowStock.Count موجودی کم</span>
             <span class="badge-count orange">@expiring.Count در آستانه انقضا</span>
             <span class="badge-count gray">@expired.Count منقضی شده</span>
+            <span class="badge-count orange">@invalidPrices.Count قیمت نامعتبر</span>
         </div>
+
+        @if(invalidPrices.Any())
+        {
+          <div class="section-title orange-title">💰 ورودی‌های فاقد قیمت معتبر</div>
+          @foreach(var e in invalidPrices){<div class="alert-card warning"><div class="alert-header"><strong>[@e.Material?.Code] @e.Material?.Name</strong><span class="status-badge warning">@e.PricePerUnit.ToString("N0") ﷼</span></div><div class="alert-detail">@e.Warehouse?.Name | @e.EntryDate.ToShamsi() | مقدار @e.Quantity.ToString("N3")</div>@if(editingPriceId==e.Id){<div class="inline-form"><input type="number" class="form-input" @bind="correctPrice" min="1"/><button class="btn btn-primary btn-sm" @onclick="()=>CorrectPrice(e.Id)">ثبت مبلغ درست</button><button class="btn btn-secondary btn-sm" @onclick="()=>editingPriceId=null">انصراف</button></div>}else{<div class="form-actions"><button class="btn btn-success btn-sm" @onclick="()=>ConfirmPrice(e.Id)">تأیید همین مبلغ</button><button class="btn btn-warning btn-sm" @onclick="()=>EditPrice(e)">اصلاح مبلغ</button></div>}</div>}
+        }
 
         @if (lowStock.Any())
         {
@@ -66,6 +74,7 @@
 @code {
     bool loaded; string search="";
     List<StockAlert> alerts=new(),lowStock=new(),expiring=new(),expired=new();
+    List<StockEntry> invalidPrices=new(); int? editingPriceId; decimal correctPrice;
 
     protected override async Task OnInitializedAsync() => await LoadAlerts();
     async Task Reload() { loaded=false; await LoadAlerts(); }
@@ -77,6 +86,10 @@
         lowStock=alerts.Where(a=>a.Type==AlertType.LowStock).ToList();
         expiring=alerts.Where(a=>a.Type==AlertType.Expiring).ToList();
         expired=alerts.Where(a=>a.Type==AlertType.Expired).ToList();
+        invalidPrices=await Warehouse.GetInvalidPriceEntriesAsync(search);
         loaded=true;
     }
+    void EditPrice(StockEntry e){editingPriceId=e.Id;correctPrice=e.PricePerUnit;}
+    async Task ConfirmPrice(int id){await Warehouse.ConfirmEntryPriceAsync(id,Auth.CurrentUser!.Username);await LoadAlerts();}
+    async Task CorrectPrice(int id){await Warehouse.CorrectEntryPriceAsync(id,correctPrice,Auth.CurrentUser!.Username);editingPriceId=null;await LoadAlerts();}
 }

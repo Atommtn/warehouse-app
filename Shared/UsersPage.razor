@@ -8,6 +8,15 @@
     <button class="btn btn-primary" @onclick="ShowAdd">+ کاربر جدید</button>
 </div>
 
+<div class="form-card"><h3>🔐 دسترسی نقش‌ها به صفحات</h3><div class="form-grid"><div class="form-group"><label>نقش</label><select class="form-input" value="@permissionRole" @onchange="OnPermissionRoleChanged"><option value="@UserRole.Manager">مدیر انبار</option><option value="@UserRole.Operator">اپراتور</option><option value="@UserRole.Attendant">متصدی</option><option value="@UserRole.Viewer">بازبین</option></select></div></div>
+<div class="permission-grid">
+@foreach(var item in PageAccess.Pages)
+{
+    <label class="permission-item"><input type="checkbox" checked="@allowedPages.Contains(item.Key)" @onchange="e=>TogglePage(item.Key,(bool)(e.Value??false))"/><span>@item.Label</span></label>
+}
+</div>
+<button class="btn btn-primary" @onclick="SavePermissions">ذخیره دسترسی‌های نقش</button>@if(!string.IsNullOrEmpty(permissionMessage)){<span class="alert alert-success permission-message">@permissionMessage</span>}</div>
+
 @if (showForm)
 {
     <div class="form-card">
@@ -31,6 +40,7 @@
                     <option value="@UserRole.Admin">مدیر ارشد</option>
                     <option value="@UserRole.Manager">مدیر انبار</option>
                     <option value="@UserRole.Operator">اپراتور</option>
+                    <option value="@UserRole.Attendant">متصدی</option>
                     <option value="@UserRole.Viewer">بازبین</option>
                 </select>
             </div>
@@ -82,8 +92,13 @@
     string fUsername="", fFullName="", fPassword="", err="";
     UserRole fRole = UserRole.Operator;
     bool fIsActive = true;
+    UserRole permissionRole=UserRole.Manager;HashSet<string> allowedPages=new(StringComparer.OrdinalIgnoreCase);string permissionMessage="";
 
-    protected override async Task OnInitializedAsync() => users = await Warehouse.GetUsersAsync();
+    protected override async Task OnInitializedAsync(){users=await Warehouse.GetUsersAsync();await LoadPermissions();}
+    async Task OnPermissionRoleChanged(ChangeEventArgs e){if(Enum.TryParse<UserRole>(e.Value?.ToString(),out var r))permissionRole=r;await LoadPermissions();}
+    async Task LoadPermissions(){allowedPages=(await Warehouse.GetRolePermissionsAsync(permissionRole)).Where(x=>x.IsAllowed).Select(x=>x.PageKey).ToHashSet(StringComparer.OrdinalIgnoreCase);permissionMessage="";}
+    void TogglePage(string key,bool enabled){if(enabled)allowedPages.Add(key);else allowedPages.Remove(key);}
+    async Task SavePermissions(){await Warehouse.SaveRolePermissionsAsync(permissionRole,allowedPages);permissionMessage="دسترسی‌های نقش ذخیره شد؛ کاربران این نقش پس از ورود مجدد تنظیمات جدید را دریافت می‌کنند.";}
 
     void ShowAdd() { editId=null; fUsername=""; fFullName=""; fPassword=""; fRole=UserRole.Operator; fIsActive=true; err=""; showForm=true; }
     void Edit(User u) { editId=u.Id; fUsername=u.Username; fFullName=u.FullName; fPassword=""; fRole=u.Role; fIsActive=u.IsActive; err=""; showForm=true; }
@@ -111,5 +126,5 @@
         users = await Warehouse.GetUsersAsync();
     }
 
-    string RoleLabel(UserRole r) => r switch { UserRole.Admin=>"مدیر ارشد", UserRole.Manager=>"مدیر انبار", UserRole.Operator=>"اپراتور", _=>"بازبین" };
+    string RoleLabel(UserRole r) => r switch { UserRole.Admin=>"مدیر ارشد", UserRole.Manager=>"مدیر انبار", UserRole.Operator=>"اپراتور",UserRole.Attendant=>"متصدی", _=>"بازبین" };
 }

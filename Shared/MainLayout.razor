@@ -25,13 +25,11 @@
         </div>
 
         <ul class="nav-menu">
-            <li class="@A("dashboard")">  <button @onclick='()=>Go("dashboard")'>📊 داشبورد</button></li>
-            <li class="@A("materials")">  <button @onclick='()=>Go("materials")'>📦 مواد اولیه</button></li>
-            @if (Auth.IsManager)
-            {
-                <li class="@A("archive")"><button @onclick='()=>Go("archive")'>🗄️ آرشیو مواد اولیه</button></li>
-                <li class="@A("warehouses")"><button @onclick='()=>Go("warehouses")'>🏬 انبارها و تفصیل</button></li>
-            }
+            @if(Auth.CanAccess("dashboard")){<li class="@A("dashboard")"><button @onclick='()=>Go("dashboard")'>📊 داشبورد</button></li>}
+            @if(Auth.CanAccess("materials")){<li class="@A("materials")"><button @onclick='()=>Go("materials")'>📦 مواد اولیه</button></li>}
+            @if(Auth.CanAccess("archive")){<li class="@A("archive")"><button @onclick='()=>Go("archive")'>🗄️ آرشیو مواد اولیه</button></li>}
+            @if(Auth.CanAccess("warehouses")){<li class="@A("warehouses")"><button @onclick='()=>Go("warehouses")'>🏬 انبارها و تفصیل</button></li>}
+            @if(Auth.CanAccess("definitions")){
             <li class="nav-parent @(IsDefinitions()?"active":"")">
                 <button @onclick="ToggleDefs" class="nav-parent-btn">
                     ⚙️ تعاریف اولیه
@@ -46,12 +44,9 @@
                     </ul>
                 }
             </li>
-            @if (Auth.IsManager)
-            {
-                <li class="@A("entry")"><button @onclick='()=>Go("entry")'>⬆️ ورود به انبار</button></li>
             }
-            @if (Auth.IsAttendant)
-            {
+            @if(Auth.CanAccess("entry")){<li class="@A("entry")"><button @onclick='()=>Go("entry")'>⬆️ ورود به انبار</button></li>}
+            @if(Auth.CanAccess("withdrawal")){
                 <li class="@A("withdrawal")">
                     <button @onclick='()=>Go("withdrawal")'>
                         ⬇️ خروج از انبار
@@ -59,18 +54,18 @@
                     </button>
                 </li>
             }
-            @if(Auth.IsAttendant){<li class="@A("transfer")"><button @onclick='()=>Go("transfer")'>🔄 انتقال بین انبارها</button></li>}
-            <li class="@A("warehouse-stock")"><button @onclick='()=>Go("warehouse-stock")'>📦 موجودی تفکیکی</button></li>
-            <li class="@A("cardex")"><button @onclick='()=>Go("cardex")'>📒 کاردکس کالا</button></li>
-            <li class="@A("history")">   <button @onclick='()=>Go("history")'>📋 تاریخچه</button></li>
-            <li class="@A("prices")">    <button @onclick='()=>Go("prices")'>📈 تحلیل قیمت</button></li>
-            <li class="@A("recipes")">   <button @onclick='()=>Go("recipes")'>🧁 رسپی‌ها</button></li>
-            <li class="@A("alerts")">
+            @if(Auth.CanAccess("transfer")){<li class="@A("transfer")"><button @onclick='()=>Go("transfer")'>🔄 انتقال بین انبارها</button></li>}
+            @if(Auth.CanAccess("warehouse-stock")){<li class="@A("warehouse-stock")"><button @onclick='()=>Go("warehouse-stock")'>📦 موجودی تفکیکی</button></li>}
+            @if(Auth.CanAccess("cardex")){<li class="@A("cardex")"><button @onclick='()=>Go("cardex")'>📒 کاردکس کالا</button></li>}
+            @if(Auth.CanAccess("history")){<li class="@A("history")"><button @onclick='()=>Go("history")'>📋 تاریخچه</button></li>}
+            @if(Auth.CanAccess("prices")){<li class="@A("prices")"><button @onclick='()=>Go("prices")'>📈 تحلیل قیمت</button></li>}
+            @if(Auth.CanAccess("recipes")){<li class="@A("recipes")"><button @onclick='()=>Go("recipes")'>🧁 رسپی‌ها</button></li>}
+            @if(Auth.CanAccess("alerts")){<li class="@A("alerts")">
                 <button @onclick='()=>Go("alerts")'>
                     🔔 هشدارها
                     @if (alertCount > 0) { <span class="badge">@alertCount</span> }
                 </button>
-            </li>
+            </li>}
             @if (Auth.IsAdmin)
             {
                 <li class="nav-divider"></li>
@@ -84,20 +79,20 @@
     </nav>
 
     <main class="main-content" @onclick="CloseSidebar">
-        @if      (page == "dashboard")                       { <DashboardPage /> }
-        else if  (page == "materials")                       { <MaterialsPage /> }
-        else if  (page == "archive"    && Auth.IsManager)    { <ArchivePage /> }
-        else if  (page == "warehouses" && Auth.IsManager)    { <WarehousesPage /> }
-        else if  (page == "definitions") { <DefinitionsPage DefaultTab="@defsTab" /> }
-        else if  (page == "entry"      && Auth.IsManager)    { <StockEntryPage /> }
-        else if  (page == "withdrawal" && Auth.IsAttendant)  { <WithdrawalPage /> }
-        else if  (page == "transfer" && Auth.IsAttendant)    { <TransferPage /> }
-        else if  (page == "warehouse-stock")                 { <WarehouseInventoryPage /> }
-        else if  (page == "cardex")                          { <CardexPage /> }
-        else if  (page == "history")                         { <HistoryPage /> }
-        else if  (page == "prices")                          { <PriceAnalysisPage /> }
-        else if  (page == "recipes")                         { <RecipePage /> }
-        else if  (page == "alerts")                          { <AlertsPage /> }
+        @if      (page == "dashboard" && Auth.CanAccess(page))       { <DashboardPage /> }
+        else if  (page == "materials" && Auth.CanAccess(page))       { <MaterialsPage /> }
+        else if  (page == "archive" && Auth.CanAccess(page))         { <ArchivePage /> }
+        else if  (page == "warehouses" && Auth.CanAccess(page))      { <WarehousesPage /> }
+        else if  (page == "definitions" && Auth.CanAccess(page))     { <DefinitionsPage DefaultTab="@defsTab" /> }
+        else if  (page == "entry" && Auth.CanAccess(page))           { <StockEntryPage /> }
+        else if  (page == "withdrawal" && Auth.CanAccess(page))      { <WithdrawalPage /> }
+        else if  (page == "transfer" && Auth.CanAccess(page))        { <TransferPage /> }
+        else if  (page == "warehouse-stock" && Auth.CanAccess(page)) { <WarehouseInventoryPage /> }
+        else if  (page == "cardex" && Auth.CanAccess(page))          { <CardexPage /> }
+        else if  (page == "history" && Auth.CanAccess(page))         { <HistoryPage /> }
+        else if  (page == "prices" && Auth.CanAccess(page))          { <PriceAnalysisPage /> }
+        else if  (page == "recipes" && Auth.CanAccess(page))         { <RecipePage /> }
+        else if  (page == "alerts" && Auth.CanAccess(page))          { <AlertsPage /> }
         else if  (page == "users"      && Auth.IsAdmin)      { <UsersPage /> }
     </main>
 </div>
@@ -108,7 +103,7 @@
     int alertCount, pendingCount;
     bool sidebarOpen, defsOpen;
 
-    protected override async Task OnInitializedAsync() => await LoadCounts();
+    protected override async Task OnInitializedAsync(){if(!Auth.CanAccess(page))page=PageAccess.Pages.FirstOrDefault(x=>Auth.CanAccess(x.Key)).Key??"dashboard";await LoadCounts();}
 
     async Task LoadCounts()
     {

@@ -85,6 +85,9 @@ public class StockEntry
     public string CreatedByUsername { get; set; } = "";
     public int? WarehouseId { get; set; }
     public Warehouse? Warehouse { get; set; }
+    public bool PriceConfirmed { get; set; }
+    public string PriceConfirmedBy { get; set; } = "";
+    public DateTime? PriceConfirmedAt { get; set; }
 }
 
 public class StockWithdrawal
@@ -134,6 +137,14 @@ public class WarehouseStock
 }
 
 public enum InventoryTransactionType { OpeningBalance, Entry, Withdrawal, TransferOut, TransferIn, Adjustment }
+
+public class RolePagePermission
+{
+    public int Id { get; set; }
+    public UserRole Role { get; set; }
+    public string PageKey { get; set; } = "";
+    public bool IsAllowed { get; set; }
+}
 
 public class InventoryTransaction
 {

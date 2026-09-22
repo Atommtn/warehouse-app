@@ -2,6 +2,7 @@
 @using WarehouseApp.Models
 @inject PriceAnalysisService PriceService
 @inject AuthService Auth
+@inject WarehouseService Warehouse
 
 <div class="page-header">
     <h2>📈 تحلیل قیمت مواد اولیه</h2>
@@ -41,6 +42,16 @@ else
             </div>
         </div>
     }
+
+    <div class="form-card price-chart-card"><h3>نمودار تغییر قیمت کالای انتخابی</h3><div class="form-grid">
+      <div class="form-group"><label>ماده</label><select class="form-input" @bind="chartMaterialId"><option value="0">انتخاب کنید...</option>@foreach(var a in analyses.OrderBy(x=>x.MaterialCode)){<option value="@a.MaterialId">[@a.MaterialCode] @a.MaterialName</option>}</select></div>
+      <div class="form-group"><label>از تاریخ</label><PersianDatePicker Value="chartFrom" ValueChanged="@(x=>chartFrom=x)" /></div><div class="form-group"><label>تا تاریخ</label><PersianDatePicker Value="chartTo" ValueChanged="@(x=>chartTo=x)" /></div>
+    </div><button class="btn btn-primary" @onclick="ApplyChart">نمایش نمودار</button>
+    @if(chartPoints.Any()){
+      <div class="chart-summary"><span>اولین فی: <strong>@chartPoints.First().Price.ToString("N0")</strong></span><span>آخرین فی: <strong>@chartPoints.Last().Price.ToString("N0")</strong></span><span class="@(ChartChange>=0?"price-up":"price-down")">تغییر: @ChartChange.ToString("N1")%</span></div>
+      <div class="price-svg-wrap"><svg viewBox="0 0 900 300" class="price-svg"><line x1="50" y1="20" x2="50" y2="260" class="chart-axis"/><line x1="50" y1="260" x2="880" y2="260" class="chart-axis"/><polyline points="@SvgPoints" class="chart-line" fill="none"/>@for(var i=0;i<chartPoints.Count;i++){var p=SvgPoint(i,chartPoints[i].Price);<circle cx="@p.x" cy="@p.y" r="5" class="chart-dot"><title>@chartPoints[i].EntryDate.ToShamsi() — @chartPoints[i].Price.ToString("N0") ریال</title></circle>}</svg></div>
+    } else if(chartMaterialId>0){<div class="empty-state">در این بازه خریدی ثبت نشده است.</div>}
+    </div>
 
     <!-- جدول اصلی -->
     <div class="search-bar"><input class="form-input search-input" @bind="search" @bind:event="oninput" placeholder="🔍 جستجو بر اساس نام یا کد کالا..." /></div>
@@ -128,7 +139,7 @@ else
                                                 {
                                                     <th>قیمت خرید</th>
                                                     <th>میانگین تجمعی</th>
-                                                    <th>تغییر</th>
+                                                <th>تغییر</th><th>اصلاح</th>
                                                 }
                                             </tr>
                                         </thead>
@@ -161,6 +172,7 @@ else
                                                                 </span>
                                                             }
                                                         </td>
+                                                        <td>@if(editPriceEntryId==h.EntryId){<div class="inline-form"><input type="number" class="form-input" @bind="editPrice"/><button class="btn btn-primary btn-sm" @onclick="()=>SavePrice(h.EntryId)">ذخیره</button></div>}else{<button class="btn-icon" @onclick="()=>StartPriceEdit(h)">✏️</button>}</td>
                                                     }
                                                 </tr>
                                             }
@@ -182,6 +194,10 @@ else
     decimal totalValue;
     int? expandedId;
     string search="";
+    int chartMaterialId;DateTime chartFrom=DateTime.Today.AddYears(-1),chartTo=DateTime.Today;List<PriceHistory> chartPoints=new();int? editPriceEntryId;decimal editPrice;
+    decimal ChartChange=>chartPoints.Count<2||chartPoints.First().Price==0?0:(chartPoints.Last().Price-chartPoints.First().Price)/chartPoints.First().Price*100;
+    string SvgPoints=>string.Join(" ",chartPoints.Select((x,i)=>{var p=SvgPoint(i,x.Price);return $"{p.x:F1},{p.y:F1}";}));
+    (double x,double y) SvgPoint(int i,decimal price){var min=chartPoints.Min(x=>x.Price);var max=chartPoints.Max(x=>x.Price);var x=chartPoints.Count==1?465:50+i*(830d/(chartPoints.Count-1));var y=max==min?140:260-(double)((price-min)/(max-min))*220;return(x,y);}
     IEnumerable<PriceAnalysis> FilteredAnalyses=>string.IsNullOrWhiteSpace(search)?analyses:analyses.Where(x=>x.MaterialName.Contains(search,StringComparison.OrdinalIgnoreCase)||x.MaterialCode.Contains(search,StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnInitializedAsync() => await Load();
@@ -194,6 +210,9 @@ else
             totalValue = analyses.Sum(a => a.StockValue);
         loaded = true;
     }
+    void ApplyChart(){var a=analyses.FirstOrDefault(x=>x.MaterialId==chartMaterialId);chartPoints=a?.History.Where(x=>x.EntryDate.Date>=chartFrom.Date&&x.EntryDate.Date<=chartTo.Date).OrderBy(x=>x.EntryDate).ToList()??new();}
+    void StartPriceEdit(PriceHistory h){editPriceEntryId=h.EntryId;editPrice=h.Price;}
+    async Task SavePrice(int id){await Warehouse.CorrectEntryPriceAsync(id,editPrice,Auth.CurrentUser!.Username);editPriceEntryId=null;await Load();ApplyChart();}
 
     void ToggleDetail(int id) => expandedId = expandedId == id ? null : id;
 }

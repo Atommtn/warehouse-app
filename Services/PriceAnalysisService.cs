@@ -33,6 +33,7 @@ public class PriceAnalysis
 
 public class PriceHistory
 {
+    public int EntryId { get; set; }
     public DateTime EntryDate { get; set; }
     public decimal Quantity { get; set; }
     public decimal Price { get; set; }
@@ -126,6 +127,7 @@ public class PriceAnalysisService
             cumValue += e.Quantity * e.PricePerUnit;
             analysis.History.Add(new PriceHistory
             {
+                EntryId       = e.Id,
                 EntryDate     = e.EntryDate,
                 Quantity      = e.Quantity,
                 Price         = e.PricePerUnit,

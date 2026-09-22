@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<WarehouseStock> WarehouseStocks => Set<WarehouseStock>();
     public DbSet<InventoryTransaction> InventoryTransactions => Set<InventoryTransaction>();
+    public DbSet<RolePagePermission> RolePagePermissions => Set<RolePagePermission>();
 
     protected override void OnModelCreating(ModelBuilder m)
     {
@@ -56,6 +57,7 @@ public class AppDbContext : DbContext
         m.Entity<InventoryTransaction>().Property(x => x.OutgoingQuantity).HasColumnType("decimal(18,3)");
         m.Entity<InventoryTransaction>().Property(x => x.BalanceAfter).HasColumnType("decimal(18,3)");
         m.Entity<InventoryTransaction>().Property(x => x.UnitPrice).HasColumnType("decimal(18,2)");
+        m.Entity<RolePagePermission>().HasIndex(x=>new{x.Role,x.PageKey}).IsUnique();
     }
 }
 

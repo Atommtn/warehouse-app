@@ -9,6 +9,7 @@ public class AuthService
     private readonly IDbContextFactory<AppDbContext> _factory;
     public User? CurrentUser { get; private set; }
     public event Action? OnAuthChanged;
+    private HashSet<string> _allowedPages = new(StringComparer.OrdinalIgnoreCase);
 
     public AuthService(IDbContextFactory<AppDbContext> factory) => _factory = factory;
 
@@ -25,15 +26,31 @@ public class AuthService
         await using var db = await _factory.CreateDbContextAsync();
         var user = await db.Users.FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
         if (user == null || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash)) return false;
-        CurrentUser = user; OnAuthChanged?.Invoke(); return true;
+        CurrentUser = user;
+        _allowedPages = user.Role==UserRole.Admin ? new HashSet<string>(PageAccess.Pages.Select(x=>x.Key),StringComparer.OrdinalIgnoreCase) :
+            (await db.RolePagePermissions.Where(x=>x.Role==user.Role&&x.IsAllowed).Select(x=>x.PageKey).ToListAsync()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        OnAuthChanged?.Invoke(); return true;
     }
-    public void Logout() { CurrentUser = null; OnAuthChanged?.Invoke(); }
+    public bool CanAccess(string pageKey)=>IsAdmin||_allowedPages.Contains(pageKey);
+    public void Logout() { CurrentUser = null; _allowedPages.Clear(); OnAuthChanged?.Invoke(); }
+}
+
+public static class PageAccess
+{
+    public static readonly (string Key,string Label)[] Pages =
+    [
+        ("dashboard","داشبورد"),("materials","مواد اولیه"),("archive","آرشیو مواد"),("warehouses","انبارها و تفصیل"),("definitions","تعاریف اولیه"),
+        ("entry","ورود به انبار"),("withdrawal","خروج از انبار"),("transfer","انتقال بین انبارها"),("warehouse-stock","موجودی تفکیکی"),("cardex","کاردکس"),
+        ("history","تاریخچه"),("prices","تحلیل قیمت"),("recipes","رسپی‌ها"),("alerts","هشدارها"),("users","مدیریت کاربران")
+    ];
 }
 
 public class WarehouseService
 {
     private readonly IDbContextFactory<AppDbContext> _factory;
     public WarehouseService(IDbContextFactory<AppDbContext> factory) => _factory = factory;
+    public async Task<List<RolePagePermission>> GetRolePermissionsAsync(UserRole role){await using var db=await _factory.CreateDbContextAsync();return await db.RolePagePermissions.Where(x=>x.Role==role).OrderBy(x=>x.PageKey).ToListAsync();}
+    public async Task SaveRolePermissionsAsync(UserRole role,IEnumerable<string> allowed){await using var db=await _factory.CreateDbContextAsync();var set=allowed.ToHashSet(StringComparer.OrdinalIgnoreCase);var rows=await db.RolePagePermissions.Where(x=>x.Role==role).ToListAsync();foreach(var page in PageAccess.Pages){var row=rows.FirstOrDefault(x=>x.PageKey==page.Key);if(row==null){row=new RolePagePermission{Role=role,PageKey=page.Key};db.RolePagePermissions.Add(row);}row.IsAllowed=role==UserRole.Admin||set.Contains(page.Key);}await db.SaveChangesAsync();}
 
     public async Task<List<Warehouse>> GetWarehousesAsync() { await using var db=await _factory.CreateDbContextAsync(); return await db.Warehouses.Where(x=>x.IsActive).OrderBy(x=>x.Id).ToListAsync(); }
     public async Task UpdateWarehouseAsync(Warehouse item){await using var db=await _factory.CreateDbContextAsync();db.Warehouses.Update(item);await db.SaveChangesAsync();}
@@ -277,8 +294,9 @@ public class WarehouseService
         await using var db = await _factory.CreateDbContextAsync();
         var materials = await db.Materials.Where(m => m.IsActive).ToListAsync();
         var alerts = await GetAlertsAsync();
+        var invalidPriceCount=await db.StockEntries.CountAsync(x=>x.PricePerUnit<100000&&!x.PriceConfirmed);
         var pendingCount = await db.StockWithdrawals.CountAsync(w => w.Status == WithdrawalStatus.Pending);
-        return (materials.Sum(m => m.CurrentStock * m.PricePerUnit), materials.Count, materials.Count(m => m.CurrentStock <= m.MinStockLevel), alerts.Count, pendingCount);
+        return (materials.Sum(m => m.CurrentStock * m.PricePerUnit), materials.Count, materials.Count(m => m.CurrentStock <= m.MinStockLevel), alerts.Count+invalidPriceCount, pendingCount);
     }
 
     public async Task<(List<Material> materials, List<StockEntry> entries, List<StockWithdrawal> withdrawals, List<StockAlert> alerts)> GetExportDataAsync()
@@ -286,6 +304,30 @@ public class WarehouseService
         var mats = await GetMaterialsAsync(); var entries = await GetEntriesAsync();
         var withdrawals = await GetWithdrawalsAsync(); var als = await GetAlertsAsync();
         return (mats, entries, withdrawals, als);
+    }
+
+    public async Task<List<StockEntry>> GetInvalidPriceEntriesAsync(string? search=null)
+    {
+        await using var db=await _factory.CreateDbContextAsync();var q=db.StockEntries.Include(x=>x.Material).Include(x=>x.Warehouse).Where(x=>x.PricePerUnit<100000&&!x.PriceConfirmed);
+        if(!string.IsNullOrWhiteSpace(search))q=q.Where(x=>x.Material!.Name.Contains(search)||x.Material.Code.Contains(search));
+        return await q.OrderByDescending(x=>x.EntryDate).ToListAsync();
+    }
+    public async Task ConfirmEntryPriceAsync(int id,string username){await using var db=await _factory.CreateDbContextAsync();var e=await db.StockEntries.FindAsync(id);if(e==null)return;e.PriceConfirmed=true;e.PriceConfirmedBy=username;e.PriceConfirmedAt=DateTime.UtcNow;await db.SaveChangesAsync();}
+    public async Task CorrectEntryPriceAsync(int id,decimal price,string username)
+    {
+        if(price<=0)throw new Exception("مبلغ باید بیشتر از صفر باشد");await using var db=await _factory.CreateDbContextAsync();var e=await db.StockEntries.FindAsync(id);if(e==null)return;e.PricePerUnit=price;e.PriceConfirmed=price<100000;e.PriceConfirmedBy=username;e.PriceConfirmedAt=DateTime.UtcNow;
+        var cardexCandidates=await db.InventoryTransactions.Where(x=>x.Type==InventoryTransactionType.Entry&&x.MaterialId==e.MaterialId&&x.WarehouseId==e.WarehouseId&&x.TransactionDate.Date==e.EntryDate.Date&&x.IncomingQuantity==e.Quantity).ToListAsync();var cardexEntry=cardexCandidates.OrderBy(x=>Math.Abs((x.CreatedAt-e.CreatedAt).Ticks)).FirstOrDefault();if(cardexEntry!=null)cardexEntry.UnitPrice=price;
+        var latest=await db.StockEntries.Where(x=>x.MaterialId==e.MaterialId).OrderByDescending(x=>x.EntryDate).ThenByDescending(x=>x.Id).FirstOrDefaultAsync();var m=await db.Materials.FindAsync(e.MaterialId);if(m!=null&&latest?.Id==e.Id)m.PricePerUnit=price;await db.SaveChangesAsync();
+    }
+
+    public async Task<MovementDashboard> GetMovementDashboardAsync(DateTime from,DateTime to,int? warehouseId=null,int? materialId=null)
+    {
+        await using var db=await _factory.CreateDbContextAsync();var end=to.Date.AddDays(1);
+        var entries=await db.StockEntries.Include(x=>x.Material).ThenInclude(x=>x!.Unit).Where(x=>x.EntryDate>=from.Date&&x.EntryDate<end&&(!warehouseId.HasValue||x.WarehouseId==warehouseId)&&(!materialId.HasValue||x.MaterialId==materialId)).ToListAsync();
+        var outs=await db.StockWithdrawals.Include(x=>x.Material).ThenInclude(x=>x!.Unit).Where(x=>x.Status==WithdrawalStatus.Approved&&x.WithdrawalDate>=from.Date&&x.WithdrawalDate<end&&(!warehouseId.HasValue||x.WarehouseId==warehouseId)&&(!materialId.HasValue||x.MaterialId==materialId)).ToListAsync();
+        var txPrices=await db.InventoryTransactions.Where(x=>x.Type==InventoryTransactionType.Withdrawal&&x.TransactionDate>=from.Date&&x.TransactionDate<end).ToListAsync();
+        var ids=entries.Select(x=>x.MaterialId).Concat(outs.Select(x=>x.MaterialId)).Distinct().ToList();var priceHistory=await db.StockEntries.Where(x=>ids.Contains(x.MaterialId)&&x.EntryDate<end).ToListAsync();var result=new MovementDashboard();
+        foreach(var id in ids){var e=entries.Where(x=>x.MaterialId==id).ToList();var o=outs.Where(x=>x.MaterialId==id).ToList();var mat=e.FirstOrDefault()?.Material??o.FirstOrDefault()?.Material;var row=new MovementDashboardRow{MaterialId=id,MaterialCode=mat?.Code??"",MaterialName=mat?.Name??"",Unit=mat?.Unit?.Name??"",IncomingQuantity=e.Sum(x=>x.Quantity),IncomingValue=e.Sum(x=>x.Quantity*x.PricePerUnit),OutgoingQuantity=o.Sum(x=>x.Quantity)};foreach(var w in o){var price=txPrices.Where(x=>x.MaterialId==id&&x.WarehouseId==w.WarehouseId).OrderBy(x=>Math.Abs((x.CreatedAt-w.CreatedAt).Ticks)).Select(x=>x.UnitPrice).FirstOrDefault();if(price<=0){price=priceHistory.Where(x=>x.MaterialId==id&&x.EntryDate<=w.WithdrawalDate).OrderByDescending(x=>x.EntryDate).ThenByDescending(x=>x.Id).Select(x=>x.PricePerUnit).FirstOrDefault();row.HasEstimatedOutgoingValue=true;}row.OutgoingValue+=w.Quantity*price;}result.Rows.Add(row);}return result;
     }
 
     // ── Recipes ──
@@ -426,3 +468,6 @@ public class RecipeCostLine
     public decimal Quantity {get;set;} public string BaseUnitName {get;set;}=""; public string StockUnitName {get;set;}=""; public decimal ConversionFactor {get;set;}
     public decimal LastPurchasePrice {get;set;} public decimal PricePerBaseUnit {get;set;} public decimal LineCost {get;set;}
 }
+
+public class MovementDashboard{public List<MovementDashboardRow> Rows{get;set;}=new();public decimal IncomingQuantity=>Rows.Sum(x=>x.IncomingQuantity);public decimal OutgoingQuantity=>Rows.Sum(x=>x.OutgoingQuantity);public decimal IncomingValue=>Rows.Sum(x=>x.IncomingValue);public decimal OutgoingValue=>Rows.Sum(x=>x.OutgoingValue);}
+public class MovementDashboardRow{public int MaterialId{get;set;}public string MaterialCode{get;set;}="";public string MaterialName{get;set;}="";public string Unit{get;set;}="";public decimal IncomingQuantity{get;set;}public decimal OutgoingQuantity{get;set;}public decimal IncomingValue{get;set;}public decimal OutgoingValue{get;set;}public bool HasEstimatedOutgoingValue{get;set;}}
