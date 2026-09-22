@@ -30,6 +30,7 @@
             @if (Auth.IsManager)
             {
                 <li class="@A("archive")"><button @onclick='()=>Go("archive")'>🗄️ آرشیو مواد اولیه</button></li>
+                <li class="@A("warehouses")"><button @onclick='()=>Go("warehouses")'>🏬 انبارها و تفصیل</button></li>
             }
             <li class="nav-parent @(IsDefinitions()?"active":"")">
                 <button @onclick="ToggleDefs" class="nav-parent-btn">
@@ -58,6 +59,9 @@
                     </button>
                 </li>
             }
+            @if(Auth.IsAttendant){<li class="@A("transfer")"><button @onclick='()=>Go("transfer")'>🔄 انتقال بین انبارها</button></li>}
+            <li class="@A("warehouse-stock")"><button @onclick='()=>Go("warehouse-stock")'>📦 موجودی تفکیکی</button></li>
+            <li class="@A("cardex")"><button @onclick='()=>Go("cardex")'>📒 کاردکس کالا</button></li>
             <li class="@A("history")">   <button @onclick='()=>Go("history")'>📋 تاریخچه</button></li>
             <li class="@A("prices")">    <button @onclick='()=>Go("prices")'>📈 تحلیل قیمت</button></li>
             <li class="@A("recipes")">   <button @onclick='()=>Go("recipes")'>🧁 رسپی‌ها</button></li>
@@ -83,9 +87,13 @@
         @if      (page == "dashboard")                       { <DashboardPage /> }
         else if  (page == "materials")                       { <MaterialsPage /> }
         else if  (page == "archive"    && Auth.IsManager)    { <ArchivePage /> }
+        else if  (page == "warehouses" && Auth.IsManager)    { <WarehousesPage /> }
         else if  (page == "definitions") { <DefinitionsPage DefaultTab="@defsTab" /> }
         else if  (page == "entry"      && Auth.IsManager)    { <StockEntryPage /> }
         else if  (page == "withdrawal" && Auth.IsAttendant)  { <WithdrawalPage /> }
+        else if  (page == "transfer" && Auth.IsAttendant)    { <TransferPage /> }
+        else if  (page == "warehouse-stock")                 { <WarehouseInventoryPage /> }
+        else if  (page == "cardex")                          { <CardexPage /> }
         else if  (page == "history")                         { <HistoryPage /> }
         else if  (page == "prices")                          { <PriceAnalysisPage /> }
         else if  (page == "recipes")                         { <RecipePage /> }

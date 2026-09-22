@@ -83,6 +83,8 @@ public class StockEntry
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int CreatedByUserId { get; set; }
     public string CreatedByUsername { get; set; } = "";
+    public int? WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
 }
 
 public class StockWithdrawal
@@ -101,9 +103,59 @@ public class StockWithdrawal
     public string? ApprovedByUsername { get; set; }
     public DateTime? ApprovedAt { get; set; }
     public string? RejectReason { get; set; }
+    public int? WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
 }
 
 public enum WithdrawalStatus { Pending, Approved, Rejected }
+
+public class Warehouse
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Location { get; set; } = "";
+    public string ResponsiblePerson { get; set; } = "";
+    public string AccountingDetailCode { get; set; } = "";
+    public string Notes { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public class WarehouseStock
+{
+    public int Id { get; set; }
+    public int WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+    public int MaterialId { get; set; }
+    public Material? Material { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal MinStockLevel { get; set; }
+}
+
+public enum InventoryTransactionType { OpeningBalance, Entry, Withdrawal, TransferOut, TransferIn, Adjustment }
+
+public class InventoryTransaction
+{
+    public long Id { get; set; }
+    public string DocumentNumber { get; set; } = "";
+    public InventoryTransactionType Type { get; set; }
+    public int WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+    public int? RelatedWarehouseId { get; set; }
+    public Warehouse? RelatedWarehouse { get; set; }
+    public int MaterialId { get; set; }
+    public Material? Material { get; set; }
+    public decimal IncomingQuantity { get; set; }
+    public decimal OutgoingQuantity { get; set; }
+    public decimal BalanceAfter { get; set; }
+    public decimal UnitPrice { get; set; }
+    public DateTime TransactionDate { get; set; }
+    public string Description { get; set; } = "";
+    public int CreatedByUserId { get; set; }
+    public string CreatedByUsername { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
 
 public class StockAlert
 {

@@ -35,6 +35,53 @@ public class WarehouseService
     private readonly IDbContextFactory<AppDbContext> _factory;
     public WarehouseService(IDbContextFactory<AppDbContext> factory) => _factory = factory;
 
+    public async Task<List<Warehouse>> GetWarehousesAsync() { await using var db=await _factory.CreateDbContextAsync(); return await db.Warehouses.Where(x=>x.IsActive).OrderBy(x=>x.Id).ToListAsync(); }
+    public async Task UpdateWarehouseAsync(Warehouse item){await using var db=await _factory.CreateDbContextAsync();db.Warehouses.Update(item);await db.SaveChangesAsync();}
+    public async Task<List<WarehouseStock>> GetWarehouseStocksAsync(int? warehouseId=null, string? search=null)
+    {
+        await using var db=await _factory.CreateDbContextAsync();
+        var q=db.WarehouseStocks.Include(x=>x.Warehouse).Include(x=>x.Material).ThenInclude(x=>x!.Unit).Where(x=>x.Material!.IsActive).AsQueryable();
+        if(warehouseId.HasValue) q=q.Where(x=>x.WarehouseId==warehouseId);
+        if(!string.IsNullOrWhiteSpace(search)) q=q.Where(x=>x.Material!.Name.Contains(search)||x.Material.Code.Contains(search));
+        return await q.OrderBy(x=>x.Material!.Code).ThenBy(x=>x.Warehouse!.Name).ToListAsync();
+    }
+    public async Task<decimal> GetWarehouseStockAsync(int warehouseId,int materialId)
+    { await using var db=await _factory.CreateDbContextAsync(); return await db.WarehouseStocks.Where(x=>x.WarehouseId==warehouseId&&x.MaterialId==materialId).Select(x=>x.Quantity).FirstOrDefaultAsync(); }
+
+    private static async Task<WarehouseStock> StockAsync(AppDbContext db,int warehouseId,int materialId)
+    {
+        var stock=await db.WarehouseStocks.FirstOrDefaultAsync(x=>x.WarehouseId==warehouseId&&x.MaterialId==materialId);
+        if(stock!=null) return stock;
+        stock=new WarehouseStock{WarehouseId=warehouseId,MaterialId=materialId}; db.WarehouseStocks.Add(stock); return stock;
+    }
+    private static string Document(string prefix)=>$"{prefix}-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+
+    public async Task TransferAsync(int sourceId,int destinationId,int materialId,decimal quantity,DateTime date,string notes,int userId,string username)
+    {
+        if(sourceId==destinationId) throw new Exception("انبار مبدأ و مقصد نمی‌توانند یکسان باشند");
+        if(quantity<=0) throw new Exception("مقدار انتقال باید بیشتر از صفر باشد");
+        await using var db=await _factory.CreateDbContextAsync(); await using var tx=await db.Database.BeginTransactionAsync();
+        var source=await StockAsync(db,sourceId,materialId); if(source.Quantity<quantity) throw new Exception($"موجودی انبار مبدأ کافی نیست (موجودی: {source.Quantity:N3})");
+        var destination=await StockAsync(db,destinationId,materialId); source.Quantity-=quantity; destination.Quantity+=quantity;
+        var unitPrice=await db.StockEntries.Where(x=>x.MaterialId==materialId).OrderByDescending(x=>x.EntryDate).ThenByDescending(x=>x.Id).Select(x=>x.PricePerUnit).FirstOrDefaultAsync();
+        var doc=Document("TR");
+        db.InventoryTransactions.AddRange(
+            new InventoryTransaction{DocumentNumber=doc,Type=InventoryTransactionType.TransferOut,WarehouseId=sourceId,RelatedWarehouseId=destinationId,MaterialId=materialId,OutgoingQuantity=quantity,BalanceAfter=source.Quantity,UnitPrice=unitPrice,TransactionDate=date,Description=notes,CreatedByUserId=userId,CreatedByUsername=username},
+            new InventoryTransaction{DocumentNumber=doc,Type=InventoryTransactionType.TransferIn,WarehouseId=destinationId,RelatedWarehouseId=sourceId,MaterialId=materialId,IncomingQuantity=quantity,BalanceAfter=destination.Quantity,UnitPrice=unitPrice,TransactionDate=date,Description=notes,CreatedByUserId=userId,CreatedByUsername=username});
+        await db.SaveChangesAsync(); await SyncTotalAsync(db,materialId); await db.SaveChangesAsync(); await tx.CommitAsync();
+    }
+    public async Task<List<InventoryTransaction>> GetCardexAsync(int? materialId=null,int? warehouseId=null,string? search=null,DateTime? from=null,DateTime? to=null)
+    {
+        await using var db=await _factory.CreateDbContextAsync();
+        var q=db.InventoryTransactions.Include(x=>x.Material).ThenInclude(x=>x!.Unit).Include(x=>x.Warehouse).Include(x=>x.RelatedWarehouse).AsQueryable();
+        if(materialId.HasValue) q=q.Where(x=>x.MaterialId==materialId); if(warehouseId.HasValue) q=q.Where(x=>x.WarehouseId==warehouseId);
+        if(from.HasValue) q=q.Where(x=>x.TransactionDate>=from); if(to.HasValue) q=q.Where(x=>x.TransactionDate<to.Value.AddDays(1));
+        if(!string.IsNullOrWhiteSpace(search)) q=q.Where(x=>x.Material!.Name.Contains(search)||x.Material.Code.Contains(search)||x.DocumentNumber.Contains(search));
+        return await q.OrderByDescending(x=>x.TransactionDate).ThenByDescending(x=>x.Id).Take(1000).ToListAsync();
+    }
+    private static async Task SyncTotalAsync(AppDbContext db,int materialId)
+    { var mat=await db.Materials.FindAsync(materialId); if(mat!=null) mat.CurrentStock=await db.WarehouseStocks.Where(x=>x.MaterialId==materialId).SumAsync(x=>x.Quantity); }
+
     // ── Users ──
     public async Task<List<User>> GetUsersAsync()
     { await using var db = await _factory.CreateDbContextAsync(); return await db.Users.OrderBy(u => u.Username).ToListAsync(); }
@@ -58,6 +105,8 @@ public class WarehouseService
     { await using var db = await _factory.CreateDbContextAsync(); return await db.MaterialGroups.Where(g => g.IsActive).OrderBy(g => g.Name).ToListAsync(); }
     public async Task AddGroupAsync(MaterialGroup g)
     { await using var db = await _factory.CreateDbContextAsync(); db.MaterialGroups.Add(g); await db.SaveChangesAsync(); }
+    public async Task UpdateGroupAsync(MaterialGroup g)
+    { await using var db=await _factory.CreateDbContextAsync(); db.MaterialGroups.Update(g); await db.SaveChangesAsync(); }
     public async Task DeleteGroupAsync(int id)
     { await using var db = await _factory.CreateDbContextAsync(); var g = await db.MaterialGroups.FindAsync(id); if (g!=null){g.IsActive=false; await db.SaveChangesAsync();} }
 
@@ -110,32 +159,37 @@ public class WarehouseService
     // ── Stock Entries ──
     public async Task AddStockEntryAsync(StockEntry entry)
     {
-        await using var db = await _factory.CreateDbContextAsync();
+        if(!entry.WarehouseId.HasValue) throw new Exception("انبار را انتخاب کنید");
+        await using var db = await _factory.CreateDbContextAsync(); await using var tx=await db.Database.BeginTransactionAsync();
         db.StockEntries.Add(entry);
         var mat = await db.Materials.FindAsync(entry.MaterialId);
-        if (mat != null) { mat.CurrentStock += entry.Quantity; mat.PricePerUnit = entry.PricePerUnit; }
-        await db.SaveChangesAsync();
+        var stock=await StockAsync(db,entry.WarehouseId.Value,entry.MaterialId); stock.Quantity+=entry.Quantity;
+        if (mat != null) mat.PricePerUnit = entry.PricePerUnit;
+        db.InventoryTransactions.Add(new InventoryTransaction{DocumentNumber=Document("IN"),Type=InventoryTransactionType.Entry,WarehouseId=entry.WarehouseId.Value,MaterialId=entry.MaterialId,IncomingQuantity=entry.Quantity,BalanceAfter=stock.Quantity,UnitPrice=entry.PricePerUnit,TransactionDate=entry.EntryDate,Description=entry.Notes,CreatedByUserId=entry.CreatedByUserId,CreatedByUsername=entry.CreatedByUsername});
+        await db.SaveChangesAsync(); await SyncTotalAsync(db,entry.MaterialId); await db.SaveChangesAsync(); await tx.CommitAsync();
     }
     public async Task<List<StockEntry>> GetEntriesAsync(int? materialId = null, string? search = null)
     {
         await using var db = await _factory.CreateDbContextAsync();
-        var q = db.StockEntries.Include(e => e.Material).AsQueryable();
+        var q = db.StockEntries.Include(e => e.Material).Include(e=>e.Warehouse).AsQueryable();
         if (materialId.HasValue) q = q.Where(e => e.MaterialId == materialId);
         if (!string.IsNullOrWhiteSpace(search)) q = q.Where(e => e.Material!.Name.Contains(search) || e.Material.Code.Contains(search));
         return await q.OrderByDescending(e => e.EntryDate).Take(200).ToListAsync();
     }
     public async Task UpdateStockEntryAsync(StockEntry entry)
     {
-        await using var db = await _factory.CreateDbContextAsync();
+        await using var db = await _factory.CreateDbContextAsync(); await using var tx=await db.Database.BeginTransactionAsync();
         var existing = await db.StockEntries.FindAsync(entry.Id);
         if (existing == null) return;
         var oldQty = existing.Quantity;
+        var difference=entry.Quantity-oldQty;
         existing.Quantity     = entry.Quantity;
         existing.PricePerUnit = entry.PricePerUnit;
         existing.EntryDate    = entry.EntryDate;
         existing.ExpiryDate   = entry.ExpiryDate;
         existing.Notes        = entry.Notes;
         var mat = await db.Materials.FindAsync(existing.MaterialId);
+        if(existing.WarehouseId.HasValue && difference!=0){var stock=await StockAsync(db,existing.WarehouseId.Value,existing.MaterialId);if(stock.Quantity+difference<0)throw new Exception("ویرایش باعث منفی شدن موجودی انبار می‌شود");stock.Quantity+=difference;db.InventoryTransactions.Add(new InventoryTransaction{DocumentNumber=Document("ADJ"),Type=InventoryTransactionType.Adjustment,WarehouseId=existing.WarehouseId.Value,MaterialId=existing.MaterialId,IncomingQuantity=difference>0?difference:0,OutgoingQuantity=difference<0?-difference:0,BalanceAfter=stock.Quantity,UnitPrice=entry.PricePerUnit,TransactionDate=DateTime.Now,Description=$"اصلاح سند ورود شماره {entry.Id}",CreatedByUserId=entry.CreatedByUserId,CreatedByUsername=entry.CreatedByUsername});}
         if (mat != null)
         {
             mat.CurrentStock += (entry.Quantity - oldQty);
@@ -147,23 +201,25 @@ public class WarehouseService
                 ? entry.PricePerUnit
                 : (lastEntry?.PricePerUnit ?? mat.PricePerUnit);
         }
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(); await SyncTotalAsync(db,existing.MaterialId); await db.SaveChangesAsync(); await tx.CommitAsync();
     }
 
     // ── Stock Withdrawals ──
     public async Task AddWithdrawalAsync(StockWithdrawal w)
     {
-        await using var db = await _factory.CreateDbContextAsync();
+        if(!w.WarehouseId.HasValue) throw new Exception("انبار را انتخاب کنید");
+        await using var db = await _factory.CreateDbContextAsync(); await using var tx=await db.Database.BeginTransactionAsync();
         var mat = await db.Materials.FindAsync(w.MaterialId);
         if (mat == null) throw new Exception("ماده یافت نشد");
-        if (mat.CurrentStock < w.Quantity) throw new Exception($"موجودی کافی نیست (موجودی: {mat.CurrentStock})");
-        if (w.Status == WithdrawalStatus.Approved) mat.CurrentStock -= w.Quantity;
-        db.StockWithdrawals.Add(w); await db.SaveChangesAsync();
+        var stock=await StockAsync(db,w.WarehouseId.Value,w.MaterialId); if(stock.Quantity<w.Quantity) throw new Exception($"موجودی کافی نیست (موجودی انبار: {stock.Quantity:N3})");
+        stock.Quantity-=w.Quantity; w.Status=WithdrawalStatus.Approved; w.ApprovedAt=DateTime.UtcNow; w.ApprovedByUserId=w.CreatedByUserId; w.ApprovedByUsername=w.CreatedByUsername;
+        db.StockWithdrawals.Add(w); db.InventoryTransactions.Add(new InventoryTransaction{DocumentNumber=Document("OUT"),Type=InventoryTransactionType.Withdrawal,WarehouseId=w.WarehouseId.Value,MaterialId=w.MaterialId,OutgoingQuantity=w.Quantity,BalanceAfter=stock.Quantity,UnitPrice=mat.PricePerUnit,TransactionDate=w.WithdrawalDate,Description=w.Reason,CreatedByUserId=w.CreatedByUserId,CreatedByUsername=w.CreatedByUsername});
+        await db.SaveChangesAsync(); await SyncTotalAsync(db,w.MaterialId); await db.SaveChangesAsync(); await tx.CommitAsync();
     }
     public async Task<List<StockWithdrawal>> GetWithdrawalsAsync(int? materialId = null, string? search = null)
     {
         await using var db = await _factory.CreateDbContextAsync();
-        var q = db.StockWithdrawals.Include(w => w.Material).AsQueryable();
+        var q = db.StockWithdrawals.Include(w => w.Material).Include(w=>w.Warehouse).AsQueryable();
         if (materialId.HasValue) q = q.Where(w => w.MaterialId == materialId);
         if (!string.IsNullOrWhiteSpace(search)) q = q.Where(w => w.Material!.Name.Contains(search) || w.Material.Code.Contains(search));
         return await q.OrderByDescending(w => w.WithdrawalDate).Take(200).ToListAsync();
@@ -291,37 +347,26 @@ public class WarehouseService
 
         decimal mainCost    = 0;
         decimal toppingCost = 0;
+        var resultLines = new List<RecipeCostLine>();
 
         foreach (var ing in recipe.Ingredients)
         {
-            // میانگین وزنی قیمت per stock-unit از StockEntries
-            var entries = await db.StockEntries
+            var lastEntry = await db.StockEntries
                 .Where(e => e.MaterialId == ing.MaterialId)
-                .ToListAsync();
-
-            decimal avgPricePerStockUnit;
-            if (entries.Any())
-            {
-                var totalQty   = entries.Sum(e => e.Quantity);
-                var totalValue = entries.Sum(e => e.Quantity * e.PricePerUnit);
-                avgPricePerStockUnit = totalQty > 0 ? totalValue / totalQty : 0;
-            }
-            else
-            {
-                var mat = await db.Materials.FindAsync(ing.MaterialId);
-                avgPricePerStockUnit = mat?.PricePerUnit ?? 0;
-            }
+                .OrderByDescending(e=>e.EntryDate).ThenByDescending(e=>e.Id).FirstOrDefaultAsync();
 
             // ضریب تبدیل: چند واحد پایه در هر واحد انبار
-            var material = await db.Materials.FindAsync(ing.MaterialId);
+            var material = await db.Materials.Include(x=>x.Unit).FirstOrDefaultAsync(x=>x.Id==ing.MaterialId);
+            decimal lastPricePerStockUnit = lastEntry?.PricePerUnit ?? material?.PricePerUnit ?? 0;
             var baseQty  = (material?.BaseQuantity ?? 1);
             if (baseQty <= 0) baseQty = 1;
 
             // قیمت هر واحد پایه (مثلاً هر کیلو)
-            decimal pricePerBase = avgPricePerStockUnit / baseQty;
+            decimal pricePerBase = lastPricePerStockUnit / baseQty;
 
             // هزینه این قلم = مقدار (بر اساس واحد پایه) × قیمت هر واحد پایه
             var lineCost = ing.Quantity * pricePerBase;
+            resultLines.Add(new RecipeCostLine{MaterialId=ing.MaterialId,MaterialCode=material?.Code??"",MaterialName=material?.Name??"",IsTopping=ing.IsTopping,Quantity=ing.Quantity,BaseUnitName=material?.BaseUnitName??"",StockUnitName=material?.Unit?.Name??"",ConversionFactor=baseQty,LastPurchasePrice=lastPricePerStockUnit,PricePerBaseUnit=pricePerBase,LineCost=lineCost});
             if (ing.IsTopping) toppingCost += lineCost;
             else               mainCost    += lineCost;
         }
@@ -355,7 +400,8 @@ public class WarehouseService
             CostPerPiece         = costPerPiece,
             SellingPricePerKg    = sellingPricePerKg,
             SellingPricePerPiece = sellingPricePerPiece,
-            ProfitPercent        = profitPercent
+            ProfitPercent        = profitPercent,
+            Lines                = resultLines
         };
     }
 }
@@ -371,4 +417,12 @@ public class RecipeCostResult
     public decimal SellingPricePerKg    { get; set; }
     public decimal SellingPricePerPiece { get; set; }
     public decimal ProfitPercent        { get; set; }
+    public List<RecipeCostLine> Lines { get; set; } = new();
+}
+
+public class RecipeCostLine
+{
+    public int MaterialId { get;set; } public string MaterialCode {get;set;}=""; public string MaterialName {get;set;}=""; public bool IsTopping {get;set;}
+    public decimal Quantity {get;set;} public string BaseUnitName {get;set;}=""; public string StockUnitName {get;set;}=""; public decimal ConversionFactor {get;set;}
+    public decimal LastPurchasePrice {get;set;} public decimal PricePerBaseUnit {get;set;} public decimal LineCost {get;set;}
 }

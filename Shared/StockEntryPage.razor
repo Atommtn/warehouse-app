@@ -9,6 +9,7 @@
 {
     <div class="form-card">
         <div class="form-grid">
+            <div class="form-group"><label>انبار مقصد *</label><select @bind="warehouseId" class="form-input"><option value="0">انتخاب کنید...</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
             <div class="form-group">
                 <label>ماده اولیه *</label>
                 <select value="@selId" @onchange="OnMaterialChange" class="form-input">
@@ -101,7 +102,7 @@ else
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>کد</th><th>ماده</th><th>مقدار</th>
+                    <th>انبار</th><th>کد</th><th>ماده</th><th>مقدار</th>
                     @if (Auth.CanViewPrice) { <th>قیمت واحد</th> }
                     <th>تاریخ ورود</th><th>تاریخ انقضا</th><th>ثبت‌کننده</th>
                     @if (Auth.IsManager) { <th></th> }
@@ -111,6 +112,7 @@ else
                 @foreach (var e in filteredEntries)
                 {
                     <tr class="@(e.ExpiryDate < DateTime.Now ? "row-warning" : "")">
+                        <td>@e.Warehouse?.Name</td>
                         <td><code>@e.Material?.Code</code></td>
                         <td>@e.Material?.Name</td>
                         <td>@e.Quantity.ToString("N2") @(e.Material?.Unit?.Name ?? "")</td>
@@ -149,6 +151,7 @@ else
 
 @code {
     List<Material> materials = new();
+    List<Warehouse> warehouses = new(); int warehouseId;
     List<StockEntry> entries = new();
     List<StockEntry> filteredEntries = new();
 
@@ -166,6 +169,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         materials = await Warehouse.GetMaterialsAsync();
+        warehouses = await Warehouse.GetWarehousesAsync(); warehouseId = warehouses.FirstOrDefault()?.Id ?? 0;
         entries = await Warehouse.GetEntriesAsync();
         filteredEntries = entries;
     }
@@ -183,12 +187,13 @@ else
     {
         ok = ""; err = "";
         if (selId == 0) { err = "ماده را انتخاب کنید"; return; }
+        if (warehouseId == 0) { err = "انبار مقصد را انتخاب کنید"; return; }
         if (qty <= 0)   { err = "مقدار باید بیشتر از صفر باشد"; return; }
         if (Auth.CanViewPrice && price <= 0) { err = "قیمت باید بیشتر از صفر باشد"; return; }
 
         await Warehouse.AddStockEntryAsync(new StockEntry
         {
-            MaterialId = selId, Quantity = qty, PricePerUnit = price,
+            MaterialId = selId, WarehouseId=warehouseId, Quantity = qty, PricePerUnit = price,
             EntryDate = entryDate, ExpiryDate = expiryDate, Notes = notes,
             CreatedByUserId = Auth.CurrentUser!.Id, CreatedByUsername = Auth.CurrentUser.Username
         });

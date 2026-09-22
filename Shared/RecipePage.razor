@@ -90,7 +90,7 @@ else
                         <option value="0">انتخاب ماده...</option>
                         @foreach (var m in materials)
                         {
-                            <option value="@m.Id">@m.Name (@m.Unit?.Name — @m.BaseQuantity @m.BaseUnitName/واحد)</option>
+                            <option value="@m.Id">[@m.Code] @m.Name (@m.Unit?.Name — @m.BaseQuantity @m.BaseUnitName/واحد، فی @m.PricePerUnit.ToString("N0"))</option>
                         }
                     </select>
                     <input class="form-control qty-input" type="number" @bind="ing.Quantity" min="0" step="0.001" />
@@ -112,7 +112,7 @@ else
                         <option value="0">انتخاب ماده...</option>
                         @foreach (var m in materials)
                         {
-                            <option value="@m.Id">@m.Name (@m.Unit?.Name — @m.BaseQuantity @m.BaseUnitName/واحد)</option>
+                            <option value="@m.Id">[@m.Code] @m.Name (@m.Unit?.Name — @m.BaseQuantity @m.BaseUnitName/واحد، فی @m.PricePerUnit.ToString("N0"))</option>
                         }
                     </select>
                     <input class="form-control qty-input" type="number" @bind="ing.Quantity" min="0" step="0.001" />
@@ -209,18 +209,16 @@ else
             <h4>📋 جزئیات مواد</h4>
             <table class="data-table">
                 <thead>
-                    <tr><th>ماده</th><th>نوع</th><th>مقدار</th><th>واحد پایه</th><th>واحد انبار</th><th>ضریب</th></tr>
+                    <tr><th>کد</th><th>ماده</th><th>نوع</th><th>مقدار</th><th>واحد پایه</th><th>واحد انبار</th><th>ضریب</th><th>آخرین فی خرید</th><th>فی واحد پایه</th><th>هزینه ردیف</th></tr>
                 </thead>
                 <tbody>
-                    @foreach (var ing in calcRecipe.Ingredients)
+                    @foreach (var line in calcResult.Lines)
                     {
                         <tr>
-                            <td>@ing.Material?.Name</td>
-                            <td>@(ing.IsTopping ? "روکاری" : "اصلی")</td>
-                            <td>@ing.Quantity.ToString("N3")</td>
-                            <td>@ing.Material?.BaseUnitName</td>
-                            <td>@ing.Material?.Unit?.Name</td>
-                            <td>@ing.Material?.BaseQuantity</td>
+                            <td><code>@line.MaterialCode</code></td><td>@line.MaterialName</td>
+                            <td>@(line.IsTopping ? "روکاری" : "اصلی")</td><td>@line.Quantity.ToString("N3")</td>
+                            <td>@line.BaseUnitName</td><td>@line.StockUnitName</td><td>@line.ConversionFactor.ToString("N3")</td>
+                            <td>@line.LastPurchasePrice.ToString("N0")</td><td>@line.PricePerBaseUnit.ToString("N2")</td><td><strong>@line.LineCost.ToString("N0")</strong></td>
                         </tr>
                     }
                 </tbody>

@@ -87,6 +87,7 @@
     }
 
     <div class="section-title">موجودی مواد اولیه</div>
+    <div class="search-bar"><input class="form-input search-input" @bind="materialSearch" @bind:event="oninput" placeholder="🔍 جستجو بر اساس نام یا کد کالا..." /></div>
     <div class="table-responsive">
         <table class="data-table">
             <thead>
@@ -95,7 +96,7 @@
                 <th>وضعیت</th></tr>
             </thead>
             <tbody>
-                @foreach (var m in materials)
+                @foreach (var m in FilteredMaterials)
                 {
                     <tr class="@(m.CurrentStock<=m.MinStockLevel?"row-warning":"")">
                         <td><code>@m.Code</code></td>
@@ -120,6 +121,8 @@
     List<StockWithdrawal> pendingWithdrawals=new();
     decimal totalValue; int totalMaterials,lowStockCount,alertCount,pendingCount;
     int? rejectingId; string rejectReason="";
+    string materialSearch="";
+    IEnumerable<Material> FilteredMaterials => string.IsNullOrWhiteSpace(materialSearch) ? materials : materials.Where(x=>x.Name.Contains(materialSearch,StringComparison.OrdinalIgnoreCase)||x.Code.Contains(materialSearch,StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnInitializedAsync() => await Load();
 

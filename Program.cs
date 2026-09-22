@@ -25,6 +25,7 @@ using (var scope = app.Services.CreateScope())
     var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
     using var db = factory.CreateDbContext();
     DbInitializer.Initialize(db);
+    DatabaseSchemaUpgrader.Upgrade(db);
 }
 
 if (!app.Environment.IsDevelopment())

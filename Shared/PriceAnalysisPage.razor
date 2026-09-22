@@ -43,6 +43,7 @@ else
     }
 
     <!-- جدول اصلی -->
+    <div class="search-bar"><input class="form-input search-input" @bind="search" @bind:event="oninput" placeholder="🔍 جستجو بر اساس نام یا کد کالا..." /></div>
     <div class="table-responsive" style="margin-top:1rem">
         <table class="data-table">
             <thead>
@@ -63,7 +64,7 @@ else
                 </tr>
             </thead>
             <tbody>
-                @foreach (var a in analyses)
+                @foreach (var a in FilteredAnalyses)
                 {
                     <tr>
                         <td><code>@a.MaterialCode</code></td>
@@ -180,6 +181,8 @@ else
     List<PriceAnalysis> analyses = new();
     decimal totalValue;
     int? expandedId;
+    string search="";
+    IEnumerable<PriceAnalysis> FilteredAnalyses=>string.IsNullOrWhiteSpace(search)?analyses:analyses.Where(x=>x.MaterialName.Contains(search,StringComparison.OrdinalIgnoreCase)||x.MaterialCode.Contains(search,StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnInitializedAsync() => await Load();
 

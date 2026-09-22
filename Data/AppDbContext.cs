@@ -16,6 +16,9 @@ public class AppDbContext : DbContext
     public DbSet<StockWithdrawal> StockWithdrawals => Set<StockWithdrawal>();
     public DbSet<Recipe> Recipes => Set<Recipe>();
     public DbSet<RecipeIngredient> RecipeIngredients => Set<RecipeIngredient>();
+    public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+    public DbSet<WarehouseStock> WarehouseStocks => Set<WarehouseStock>();
+    public DbSet<InventoryTransaction> InventoryTransactions => Set<InventoryTransaction>();
 
     protected override void OnModelCreating(ModelBuilder m)
     {
@@ -26,6 +29,13 @@ public class AppDbContext : DbContext
         m.Entity<Supplier>().HasMany(x => x.Materials).WithOne(mat => mat.Supplier).HasForeignKey(mat => mat.SupplierId);
         m.Entity<Recipe>().HasMany(x => x.Ingredients).WithOne(i => i.Recipe).HasForeignKey(i => i.RecipeId).OnDelete(DeleteBehavior.Cascade);
         m.Entity<RecipeIngredient>().HasOne(x => x.Material).WithMany().HasForeignKey(x => x.MaterialId);
+        m.Entity<StockEntry>().HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+        m.Entity<StockWithdrawal>().HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+        m.Entity<WarehouseStock>().HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+        m.Entity<WarehouseStock>().HasOne(x => x.Material).WithMany().HasForeignKey(x => x.MaterialId).OnDelete(DeleteBehavior.Restrict);
+        m.Entity<InventoryTransaction>().HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+        m.Entity<InventoryTransaction>().HasOne(x => x.RelatedWarehouse).WithMany().HasForeignKey(x => x.RelatedWarehouseId).OnDelete(DeleteBehavior.Restrict);
+        m.Entity<InventoryTransaction>().HasOne(x => x.Material).WithMany().HasForeignKey(x => x.MaterialId).OnDelete(DeleteBehavior.Restrict);
 
         m.Entity<Material>().HasIndex(x => x.Code).IsUnique();
         m.Entity<Material>().Property(x => x.PricePerUnit).HasColumnType("decimal(18,2)");
@@ -38,6 +48,14 @@ public class AppDbContext : DbContext
         m.Entity<Recipe>().Property(x => x.BakingLossPercent).HasColumnType("decimal(5,2)");
         m.Entity<Recipe>().Property(x => x.PieceWeightGrams).HasColumnType("decimal(10,2)");
         m.Entity<RecipeIngredient>().Property(x => x.Quantity).HasColumnType("decimal(18,3)");
+        m.Entity<Warehouse>().HasIndex(x => x.Code).IsUnique();
+        m.Entity<WarehouseStock>().HasIndex(x => new { x.WarehouseId, x.MaterialId }).IsUnique();
+        m.Entity<WarehouseStock>().Property(x => x.Quantity).HasColumnType("decimal(18,3)");
+        m.Entity<WarehouseStock>().Property(x => x.MinStockLevel).HasColumnType("decimal(18,3)");
+        m.Entity<InventoryTransaction>().Property(x => x.IncomingQuantity).HasColumnType("decimal(18,3)");
+        m.Entity<InventoryTransaction>().Property(x => x.OutgoingQuantity).HasColumnType("decimal(18,3)");
+        m.Entity<InventoryTransaction>().Property(x => x.BalanceAfter).HasColumnType("decimal(18,3)");
+        m.Entity<InventoryTransaction>().Property(x => x.UnitPrice).HasColumnType("decimal(18,2)");
     }
 }
 

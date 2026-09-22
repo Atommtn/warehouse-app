@@ -5,13 +5,9 @@
 
 <div class="page-header"><h2>⬇️ خروج مواد از انبار</h2></div>
 
-@if (Auth.CurrentUser?.Role == UserRole.Attendant)
-{
-    <div class="info-banner">⚠️ درخواست شما برای تایید به مدیر انبار ارسال می‌شود</div>
-}
-
 <div class="form-card">
     <div class="form-grid">
+        <div class="form-group"><label>انبار مبدأ *</label><select class="form-input" value="@warehouseId" @onchange="OnWarehouseChange"><option value="0">انتخاب کنید...</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
         <div class="form-group">
             <label>ماده اولیه *</label>
             <input value="@materialSearch" @oninput="OnMaterialSearch" class="form-input" placeholder="🔍 جستجوی نام یا کد ماده..." />
@@ -19,7 +15,7 @@
                 <option value="0">انتخاب کنید...</option>
                 @foreach (var m in materials) { <option value="@m.Id">[@m.Code] @m.Name — @m.CurrentStock @m.Unit</option> }
             </select>
-            @if (sel != null) { <small class="form-hint">موجودی: @sel.CurrentStock @sel.Unit</small> }
+            @if (sel != null) { <small class="form-hint">موجودی این انبار: @selectedStock.ToString("N3") @sel.Unit</small> }
         </div>
         <div class="form-group">
             <label>مقدار *</label>
@@ -38,40 +34,11 @@
     @if (!string.IsNullOrEmpty(err)) { <div class="alert alert-error">@err</div> }
     <div class="form-actions">
         <button class="btn btn-primary" @onclick="Submit">
-            @(Auth.CurrentUser?.Role == UserRole.Attendant ? "📤 ارسال درخواست" : "✅ ثبت خروج")
+            ✅ ثبت خروج
         </button>
         <button class="btn btn-secondary" @onclick="Reset">پاک کردن</button>
     </div>
 </div>
-
-@if (Auth.CanApprove && pendingList.Any())
-{
-    <div class="section-title orange-title">⏳ در انتظار تایید (@pendingList.Count)</div>
-    @foreach (var w in pendingList)
-    {
-        <div class="approval-card">
-            <div class="approval-info">
-                <strong>[@w.Material?.Code] @w.Material?.Name</strong>
-                <span>@w.Quantity @w.Material?.Unit</span>
-                <span>متصدی: @w.CreatedByUsername</span>
-                <span>@w.Reason</span>
-                <span class="approval-date">@w.CreatedAt.ToShamsiWithTime()</span>
-            </div>
-            <div class="approval-actions">
-                <button class="btn btn-success btn-sm" @onclick="()=>Approve(w.Id)">✅ تایید</button>
-                <button class="btn btn-danger btn-sm"  @onclick="()=>ShowReject(w.Id)">❌ رد</button>
-            </div>
-        </div>
-        @if (rejectingId == w.Id)
-        {
-            <div class="reject-form">
-                <input @bind="rejectReason" class="form-input" placeholder="دلیل رد..." />
-                <button class="btn btn-danger btn-sm" @onclick="()=>DoReject(w.Id)">ثبت رد</button>
-                <button class="btn btn-secondary btn-sm" @onclick="()=>rejectingId=null">انصراف</button>
-            </div>
-        }
-    }
-}
 
 <div class="section-title">آخرین خروجی‌ها</div>
 <div class="search-bar">
@@ -79,11 +46,12 @@
 </div>
 <div class="table-responsive">
     <table class="data-table">
-        <thead><tr><th>کد</th><th>ماده</th><th>مقدار</th><th>تاریخ</th><th>کاربر</th><th>وضعیت</th></tr></thead>
+        <thead><tr><th>انبار</th><th>کد</th><th>ماده</th><th>مقدار</th><th>تاریخ</th><th>کاربر</th><th>وضعیت</th></tr></thead>
         <tbody>
             @foreach (var w in withdrawals)
             {
                 <tr>
+                    <td>@w.Warehouse?.Name</td>
                     <td><code>@w.Material?.Code</code></td>
                     <td>@w.Material?.Name</td>
                     <td>@w.Quantity.ToString("N2") @w.Material?.Unit</td>
@@ -101,9 +69,10 @@
 </div>
 
 @code {
-    List<Material> materials=new(); List<StockWithdrawal> withdrawals=new(), pendingList=new();
+    List<Material> materials=new(); List<StockWithdrawal> withdrawals=new(); List<Warehouse> warehouses=new();
+    int warehouseId; decimal selectedStock;
     Material? sel; int selId=0; decimal qty=0; string reason="",ok="",err="";
-    DateTime wDate=DateTime.Today; int? rejectingId; string rejectReason="";
+    DateTime wDate=DateTime.Today;
     string materialSearch="", withdrawalSearch="";
 
     protected override async Task OnInitializedAsync() => await Load();
@@ -111,15 +80,17 @@
     async Task Load()
     {
         materials = await Warehouse.GetMaterialsAsync();
+        warehouses = await Warehouse.GetWarehousesAsync(); if(warehouseId==0) warehouseId=warehouses.FirstOrDefault()?.Id??0;
         withdrawals = await Warehouse.GetWithdrawalsAsync();
-        if (Auth.CanApprove) pendingList = await Warehouse.GetPendingWithdrawalsAsync();
     }
 
-    void OnMaterialChange(ChangeEventArgs e)
+    async Task OnMaterialChange(ChangeEventArgs e)
     {
         selId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         sel = materials.FirstOrDefault(m => m.Id == selId);
+        selectedStock=warehouseId>0&&selId>0?await Warehouse.GetWarehouseStockAsync(warehouseId,selId):0;
     }
+    async Task OnWarehouseChange(ChangeEventArgs e){warehouseId=int.TryParse(e.Value?.ToString(),out var id)?id:0;selectedStock=warehouseId>0&&selId>0?await Warehouse.GetWarehouseStockAsync(warehouseId,selId):0;}
 
     async Task OnMaterialSearch(ChangeEventArgs e)
     {
@@ -137,28 +108,21 @@
     {
         ok=""; err="";
         if (selId==0) { err="ماده را انتخاب کنید"; return; }
+        if (warehouseId==0) { err="انبار مبدأ را انتخاب کنید"; return; }
         if (qty<=0)   { err="مقدار باید بیشتر از صفر باشد"; return; }
         try
         {
-            var isAttendant = Auth.CurrentUser?.Role == UserRole.Attendant;
             await Warehouse.AddWithdrawalAsync(new StockWithdrawal
             {
-                MaterialId=selId, Quantity=qty, WithdrawalDate=wDate, Reason=reason,
+                MaterialId=selId, WarehouseId=warehouseId, Quantity=qty, WithdrawalDate=wDate, Reason=reason,
                 CreatedByUserId=Auth.CurrentUser!.Id, CreatedByUsername=Auth.CurrentUser.Username,
-                Status = isAttendant ? WithdrawalStatus.Pending : WithdrawalStatus.Approved,
-                ApprovedByUsername = isAttendant ? null : Auth.CurrentUser.Username,
-                ApprovedAt = isAttendant ? null : DateTime.UtcNow
+                Status = WithdrawalStatus.Approved
             });
-            ok = isAttendant
-                ? $"📤 درخواست {qty} {sel?.Unit} از {sel?.Name} ارسال شد"
-                : $"✅ {qty} {sel?.Unit} از [{sel?.Code}] {sel?.Name} در {wDate.ToShamsi()} ثبت شد";
+            ok = $"✅ {qty} {sel?.Unit} از [{sel?.Code}] {sel?.Name} در {wDate.ToShamsi()} ثبت شد";
             await Load(); Reset();
         }
         catch (Exception ex) { err = $"❌ {ex.Message}"; }
     }
 
-    async Task Approve(int id) { await Warehouse.ApproveWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username); await Load(); }
-    void ShowReject(int id) { rejectingId=id; rejectReason=""; }
-    async Task DoReject(int id) { await Warehouse.RejectWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username, rejectReason); rejectingId=null; await Load(); }
     void Reset() { selId=0; qty=0; sel=null; wDate=DateTime.Today; reason=""; }
 }
