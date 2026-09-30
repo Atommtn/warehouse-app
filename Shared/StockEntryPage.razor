@@ -21,12 +21,17 @@
                 <label>مقدار *</label>
                 <input @bind="qty" type="number" step="0.01" class="form-input" />
             </div>
-            <div class="form-group"><label>واحد ورود *</label><select class="form-input" @bind="selectedUnit"><option value="">انتخاب کنید...</option>@foreach(var u in materialUnits){<option value="@u.UnitName">@u.UnitName (× @u.FactorToBaseUnit.ToString("N6") @selectedMaterial?.BaseUnitName)</option>}</select></div>
+            <div class="form-group"><label>واحد ورود *</label><select class="form-input" @bind="selectedUnit" @bind:after="RecalcPrice"><option value="">انتخاب کنید...</option>@foreach(var u in materialUnits){<option value="@u.UnitName">@u.UnitName (× @u.FactorToBaseUnit.ToString("N6") @selectedMaterial?.BaseUnitName)</option>}</select></div>
             @if (Auth.CanViewPrice)
             {
                 <div class="form-group">
+                    <label>فی خرید هر @(selectedMaterial?.BaseUnitName ?? "واحد پایه") (ریال)</label>
+                    <input @bind="basePrice" @bind:after="RecalcPrice" type="number" class="form-input" />
+                </div>
+                <div class="form-group">
                     <label>قیمت هر @selectedUnit (ریال) *</label>
-                    <input @bind="price" type="number" class="form-input" />
+                    <input @bind="price" @bind:after="RecalcBasePrice" type="number" class="form-input" />
+                    @if (qty > 0 && price > 0) { <small class="text-muted">جمع: @((qty * price).ToString("N0")) ریال</small> }
                 </div>
             }
             <div class="form-group">
@@ -63,12 +68,16 @@ else
                 <label>مقدار *</label>
                 <input @bind="eQty" type="number" step="0.01" class="form-input" />
             </div>
-            <div class="form-group"><label>واحد</label><select class="form-input" @bind="eUnit">@foreach(var u in editUnits){<option value="@u.UnitName">@u.UnitName</option>}</select></div>
+            <div class="form-group"><label>واحد</label><select class="form-input" @bind="eUnit" @bind:after="RecalcEditPrice">@foreach(var u in editUnits){<option value="@u.UnitName">@u.UnitName</option>}</select></div>
             @if (Auth.CanViewPrice)
             {
                 <div class="form-group">
-                    <label>قیمت واحد (ریال) *</label>
-                    <input @bind="ePrice" type="number" class="form-input" />
+                    <label>فی خرید هر @(editEntry!.Material?.BaseUnitName ?? "واحد پایه") (ریال)</label>
+                    <input @bind="eBasePrice" @bind:after="RecalcEditPrice" type="number" class="form-input" />
+                </div>
+                <div class="form-group">
+                    <label>قیمت هر @eUnit (ریال) *</label>
+                    <input @bind="ePrice" @bind:after="RecalcEditBasePrice" type="number" class="form-input" />
                 </div>
             }
             <div class="form-group">
@@ -157,13 +166,13 @@ else
     List<StockEntry> entries = new();
     List<StockEntry> filteredEntries = new();
 
-    int selId = 0; decimal qty = 0, price = 0;string selectedUnit="";Material? selectedMaterial;List<MaterialUnitConversion> materialUnits=new();
+    int selId = 0; decimal qty = 0, price = 0, basePrice = 0;string selectedUnit="";Material? selectedMaterial;List<MaterialUnitConversion> materialUnits=new();
     string notes = "", ok = "", err = "";
     DateTime entryDate = DateTime.Today, expiryDate = DateTime.Today.AddMonths(6);
 
     bool editMode = false;
     StockEntry? editEntry;
-    decimal eQty, ePrice;string eUnit="";List<MaterialUnitConversion> editUnits=new();
+    decimal eQty, ePrice, eBasePrice;string eUnit="";List<MaterialUnitConversion> editUnits=new();
     string eNotes = "", editErr = "";
     DateTime eEntryDate, eExpiryDate;
     string searchEntries = "";
@@ -176,7 +185,13 @@ else
         filteredEntries = entries;
     }
 
-    async Task OnMaterialChange(ChangeEventArgs e){selId=int.TryParse(e.Value?.ToString(),out var id)?id:0;selectedMaterial=materials.FirstOrDefault(x=>x.Id==selId);materialUnits=selId>0?await Warehouse.GetMaterialUnitsAsync(selId):new();selectedUnit=materialUnits.FirstOrDefault(x=>x.IsLegacyStockUnit)?.UnitName??materialUnits.FirstOrDefault()?.UnitName??"";}
+    async Task OnMaterialChange(ChangeEventArgs e){selId=int.TryParse(e.Value?.ToString(),out var id)?id:0;selectedMaterial=materials.FirstOrDefault(x=>x.Id==selId);materialUnits=selId>0?await Warehouse.GetMaterialUnitsAsync(selId):new();selectedUnit=materialUnits.FirstOrDefault(x=>x.IsLegacyStockUnit)?.UnitName??materialUnits.FirstOrDefault()?.UnitName??"";RecalcPrice();}
+
+    static decimal Factor(List<MaterialUnitConversion> units,string unit)=>units.FirstOrDefault(x=>x.UnitName==unit)?.FactorToBaseUnit is decimal f&&f>0?f:1;
+    void RecalcPrice(){if(basePrice>0)price=Math.Round(basePrice*Factor(materialUnits,selectedUnit),0);}
+    void RecalcBasePrice()=>basePrice=Math.Round(price/Factor(materialUnits,selectedUnit),2);
+    void RecalcEditPrice(){if(eBasePrice>0)ePrice=Math.Round(eBasePrice*Factor(editUnits,eUnit),0);}
+    void RecalcEditBasePrice()=>eBasePrice=Math.Round(ePrice/Factor(editUnits,eUnit),2);
 
     void OnSearchEntries(ChangeEventArgs e)
     {
@@ -208,7 +223,7 @@ else
 
     void Reset()
     {
-        selId = 0; qty = 0; price = 0;
+        selId = 0; qty = 0; price = 0; basePrice = 0;
         entryDate = DateTime.Today; expiryDate = DateTime.Today.AddMonths(6); notes = "";
     }
 
@@ -219,6 +234,7 @@ else
         eUnit       = e.EnteredUnitName;
         editUnits   = await Warehouse.GetMaterialUnitsAsync(e.MaterialId);
         ePrice      = e.PricePerUnit;
+        RecalcEditBasePrice();
         eEntryDate  = e.EntryDate;
         eExpiryDate = e.ExpiryDate;
         eNotes      = e.Notes;

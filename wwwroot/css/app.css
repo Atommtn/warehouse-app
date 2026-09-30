@@ -505,3 +505,18 @@ code { background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:.78rem;
 .unit-label { min-width: 60px; font-size: .85rem; color: #666; font-weight: 600; padding: 0 4px; }
 .conversion-badge { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 12px; font-size: .8rem; }
 .form-hint { display: block; font-size: .78rem; color: #888; margin-top: 3px; }
+
+/* ── Friendly unit configuration / transfer / recipe inputs ── */
+.unit-config-header { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+.unit-conversion-list { display:grid; gap:.8rem; margin-bottom:1rem; }
+.unit-conversion-card { display:grid; grid-template-columns:minmax(160px,220px) minmax(320px,1fr) minmax(220px,auto) auto; align-items:end; gap:1rem; padding:1rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; }
+.conversion-sentence { display:flex; align-items:center; gap:.55rem; min-height:42px; white-space:nowrap; }
+.conversion-sentence input { width:130px; }
+.legacy-unit-choice { display:flex; align-items:center; gap:.5rem; min-height:42px; font-size:.86rem; }
+.quantity-with-action { display:flex; gap:.5rem; }
+.quantity-with-action input { min-width:0; }
+.recipe-ingredient-card { display:grid; grid-template-columns:minmax(170px,.8fr) minmax(300px,2fr) minmax(110px,.5fr) minmax(130px,.6fr) auto; gap:.75rem; align-items:end; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:.85rem; margin-bottom:.75rem; }
+.recipe-remove { margin-bottom:1px; }
+.table-actions { display:flex; gap:.4rem; flex-wrap:wrap; }
+@media (max-width:1000px) { .unit-conversion-card,.recipe-ingredient-card { grid-template-columns:1fr 1fr; } }
+@media (max-width:640px) { .unit-conversion-card,.recipe-ingredient-card { grid-template-columns:1fr; } .conversion-sentence { white-space:normal; flex-wrap:wrap; } }

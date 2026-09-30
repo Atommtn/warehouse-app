@@ -42,11 +42,8 @@
             <div class="form-group">
                 <label>واحد پایه (برای رسپی) *</label>
                 <select @bind="fBaseUnitName" class="form-input">
-                    <option value="کیلوگرم">کیلوگرم</option>
-                    <option value="گرم">گرم</option>
-                    <option value="لیتر">لیتر</option>
-                    <option value="میلی‌لیتر">میلی‌لیتر</option>
-                    <option value="عدد">عدد</option>
+                    <option value="">انتخاب کنید...</option>
+                    @foreach(var u in units){<option value="@u.Name">@u.Name</option>}
                 </select>
                 <small class="form-hint">در رسپی مقدار را بر اساس این واحد وارد می‌کنید</small>
             </div>
@@ -170,6 +167,7 @@
         err="";
         if (string.IsNullOrWhiteSpace(fCode)) { err="کد ماده اجباری است"; return; }
         if (string.IsNullOrWhiteSpace(fName)) { err="نام ماده اجباری است"; return; }
+        if (string.IsNullOrWhiteSpace(fBaseUnitName)) { err="واحد پایه اجباری است"; return; }
         if (fBaseQuantity <= 0) { err="ضریب تبدیل باید بزرگتر از صفر باشد"; return; }
         if (await Warehouse.CodeExistsAsync(fCode, editId)) { err=$"کد {fCode} قبلاً ثبت شده"; return; }
         if (editId.HasValue)

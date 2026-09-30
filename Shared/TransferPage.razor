@@ -4,23 +4,35 @@
 @inject AuthService Auth
 
 <div class="page-header"><h2>🔄 انتقال بین انبارها</h2></div>
-<div class="form-card"><div class="form-grid">
- <div class="form-group"><label>انبار مبدأ *</label><select class="form-input" @bind="sourceId"><option value="0">انتخاب کنید...</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
- <div class="form-group"><label>انبار مقصد *</label><select class="form-input" @bind="destinationId"><option value="0">انتخاب کنید...</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
- <div class="form-group"><label>جستجوی کالا</label><input class="form-input" @bind="search" @bind:event="oninput" placeholder="نام یا کد کالا..." /></div>
- <div class="form-group"><label>کالا *</label><select class="form-input" @bind="materialId"><option value="0">انتخاب کنید...</option>@foreach(var m in FilteredMaterials){<option value="@m.Id">[@m.Code] @m.Name</option>}</select></div>
- <div class="form-group"><label>مقدار *</label><input class="form-input" type="number" step="0.001" @bind="quantity" /></div>
- <div class="form-group"><label>واحد *</label><select class="form-input" @bind="unitName">@foreach(var u in units){<option value="@u.UnitName">@u.UnitName</option>}</select></div>
- <div class="form-group"><label>تاریخ انتقال</label><PersianDatePicker Value="date" ValueChanged="@(x=>date=x)" /></div>
- <div class="form-group"><label>توضیحات</label><input class="form-input" @bind="notes" /></div>
+<div class="form-card">
+    <div class="form-grid">
+        <div class="form-group"><label>انبار مبدأ *</label><select class="form-input" value="@sourceId" @onchange="SourceChanged"><option value="0">انتخاب کنید...</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
+        <div class="form-group"><label>انبار مقصد *</label><select class="form-input" @bind="destinationId"><option value="0">انتخاب کنید...</option>@foreach(var w in warehouses.Where(x=>x.Id!=sourceId)){<option value="@w.Id">@w.Name</option>}</select></div>
+        <div class="form-group"><label>جستجوی کالا</label><input class="form-input" @bind="search" @bind:event="oninput" placeholder="نام یا کد کالا..." /></div>
+        <div class="form-group"><label>کالا *</label><select class="form-input" value="@materialId" @onchange="MaterialChanged"><option value="0">انتخاب کنید...</option>@foreach(var m in FilteredMaterials){<option value="@m.Id">[@m.Code] @m.Name</option>}</select></div>
+        <div class="form-group"><label>واحد انتقال *</label><select class="form-input" value="@unitName" @onchange="UnitChanged">@foreach(var u in units){<option value="@u.UnitName">@u.UnitName</option>}</select></div>
+        <div class="form-group"><label>مقدار انتقال *</label><div class="quantity-with-action"><input class="form-input" type="number" step="0.001" min="0" max="@AvailableInSelectedUnit" @bind="quantity" /><button type="button" class="btn btn-secondary btn-sm" @onclick="UseAll">انتقال همه</button></div><small class="form-hint">موجودی قابل انتقال: <strong>@AvailableInSelectedUnit.ToString("N3") @unitName</strong> (@availableBase.ToString("N3") @SelectedMaterial?.BaseUnitName)</small></div>
+        <div class="form-group"><label>تاریخ انتقال</label><PersianDatePicker Value="date" ValueChanged="@(x=>date=x)" /></div>
+        <div class="form-group"><label>توضیحات</label><input class="form-input" @bind="notes" /></div>
+    </div>
+    @if(!string.IsNullOrEmpty(message)){<div class="alert @(success?"alert-success":"alert-error")">@message</div>}
+    <button class="btn btn-primary" @onclick="Submit">ثبت انتقال</button>
 </div>
-@if(!string.IsNullOrEmpty(message)){<div class="alert @(success?"alert-success":"alert-error")">@message</div>}
-<button class="btn btn-primary" @onclick="Submit">ثبت انتقال</button></div>
 
-@code{
- List<Warehouse> warehouses=new(); List<Material> materials=new();List<MaterialUnitConversion> units=new(); int sourceId,destinationId,_materialId; decimal quantity; DateTime date=DateTime.Today; string notes="",search="",message="",unitName=""; bool success;int materialId{get=>_materialId;set{if(_materialId==value)return;_materialId=value;_=LoadUnits();}}
- IEnumerable<Material> FilteredMaterials=>string.IsNullOrWhiteSpace(search)?materials:materials.Where(x=>x.Name.Contains(search,StringComparison.OrdinalIgnoreCase)||x.Code.Contains(search,StringComparison.OrdinalIgnoreCase));
- protected override async Task OnInitializedAsync(){warehouses=await WarehouseService.GetWarehousesAsync();materials=await WarehouseService.GetMaterialsAsync();}
- async Task LoadUnits(){units=materialId>0?await WarehouseService.GetMaterialUnitsAsync(materialId):new();unitName=units.FirstOrDefault()?.UnitName??"";StateHasChanged();}
- async Task Submit(){try{if(sourceId==0||destinationId==0||materialId==0)throw new Exception("انبار مبدأ، مقصد و کالا را انتخاب کنید");await WarehouseService.TransferAsync(sourceId,destinationId,materialId,quantity,unitName,date,notes,Auth.CurrentUser!.Id,Auth.CurrentUser.Username);success=true;message="انتقال با موفقیت ثبت و در کاردکس درج شد";quantity=0;notes="";}catch(Exception ex){success=false;message=ex.Message;}}
+@code {
+    List<Warehouse> warehouses=new(); List<Material> materials=new(); List<MaterialUnitConversion> units=new();
+    int sourceId,destinationId,materialId; decimal quantity,availableBase; DateTime date=DateTime.Today;
+    string notes="",search="",message="",unitName=""; bool success;
+    Material? SelectedMaterial=>materials.FirstOrDefault(x=>x.Id==materialId);
+    MaterialUnitConversion? SelectedConversion=>units.FirstOrDefault(x=>x.UnitName==unitName);
+    decimal AvailableInSelectedUnit=>availableBase/(SelectedConversion?.FactorToBaseUnit>0?SelectedConversion.FactorToBaseUnit:1);
+    IEnumerable<Material> FilteredMaterials=>string.IsNullOrWhiteSpace(search)?materials:materials.Where(x=>x.Name.Contains(search,StringComparison.OrdinalIgnoreCase)||x.Code.Contains(search,StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync(){warehouses=await WarehouseService.GetWarehousesAsync();materials=await WarehouseService.GetMaterialsAsync();}
+    async Task SourceChanged(ChangeEventArgs e){sourceId=int.TryParse(e.Value?.ToString(),out var id)?id:0;if(destinationId==sourceId)destinationId=0;await LoadAvailability(true);}
+    async Task MaterialChanged(ChangeEventArgs e){materialId=int.TryParse(e.Value?.ToString(),out var id)?id:0;units=materialId>0?await WarehouseService.GetMaterialUnitsAsync(materialId):new();unitName=units.FirstOrDefault(x=>x.FactorToBaseUnit==1)?.UnitName??units.FirstOrDefault()?.UnitName??"";await LoadAvailability(true);}
+    async Task UnitChanged(ChangeEventArgs e){unitName=e.Value?.ToString()??"";quantity=AvailableInSelectedUnit;await InvokeAsync(StateHasChanged);}
+    async Task LoadAvailability(bool fillQuantity){availableBase=sourceId>0&&materialId>0?await WarehouseService.GetWarehouseStockAsync(sourceId,materialId):0;if(fillQuantity)quantity=AvailableInSelectedUnit;}
+    void UseAll()=>quantity=AvailableInSelectedUnit;
+    async Task Submit(){try{if(sourceId==0||destinationId==0||materialId==0)throw new Exception("انبار مبدأ، مقصد و کالا را انتخاب کنید");if(quantity<=0)throw new Exception("مقدار انتقال باید بیشتر از صفر باشد");await WarehouseService.TransferAsync(sourceId,destinationId,materialId,quantity,unitName,date,notes,Auth.CurrentUser!.Id,Auth.CurrentUser.Username);success=true;message="انتقال با موفقیت ثبت و در کاردکس درج شد";notes="";await LoadAvailability(true);}catch(Exception ex){success=false;message=ex.Message;}}
 }

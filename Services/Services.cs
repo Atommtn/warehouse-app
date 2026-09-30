@@ -53,10 +53,19 @@ public class WarehouseService
     public async Task SaveRolePermissionsAsync(UserRole role,IEnumerable<string> allowed){await using var db=await _factory.CreateDbContextAsync();var set=allowed.ToHashSet(StringComparer.OrdinalIgnoreCase);var rows=await db.RolePagePermissions.Where(x=>x.Role==role).ToListAsync();foreach(var page in PageAccess.Pages){var row=rows.FirstOrDefault(x=>x.PageKey==page.Key);if(row==null){row=new RolePagePermission{Role=role,PageKey=page.Key};db.RolePagePermissions.Add(row);}row.IsAllowed=role==UserRole.Admin||set.Contains(page.Key);}await db.SaveChangesAsync();}
 
     public async Task<List<Warehouse>> GetWarehousesAsync() { await using var db=await _factory.CreateDbContextAsync(); return await db.Warehouses.Where(x=>x.IsActive).OrderBy(x=>x.Id).ToListAsync(); }
+    public async Task DeleteWarehouseAsync(int warehouseId)
+    {
+        await using var db=await _factory.CreateDbContextAsync();
+        var warehouse=await db.Warehouses.FindAsync(warehouseId)??throw new Exception("انبار یافت نشد");
+        var stock=await db.WarehouseStocks.Where(x=>x.WarehouseId==warehouseId).SumAsync(x=>x.Quantity);
+        if(stock!=0)throw new Exception($"این انبار {stock:N3} واحد موجودی دارد؛ ابتدا موجودی را به انبار دیگری منتقل کنید.");
+        warehouse.IsActive=false;
+        await db.SaveChangesAsync();
+    }
     public async Task<List<MaterialUnitConversion>> GetMaterialUnitsAsync(int materialId){await using var db=await _factory.CreateDbContextAsync();return await db.MaterialUnitConversions.Where(x=>x.MaterialId==materialId&&x.IsActive).OrderByDescending(x=>x.IsLegacyStockUnit).ThenBy(x=>x.UnitName).ToListAsync();}
     public async Task ConfigureMaterialUnitsAsync(int materialId,string baseUnit,List<MaterialUnitConversion> conversions)
     {
-        if(string.IsNullOrWhiteSpace(baseUnit))throw new Exception("واحد پایه الزامی است");if(conversions.Count==0||conversions.Any(x=>string.IsNullOrWhiteSpace(x.UnitName)||x.FactorToBaseUnit<=0))throw new Exception("نام واحد و ضریب مثبت برای همه ردیف‌ها الزامی است");if(conversions.Select(x=>x.UnitName.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=conversions.Count)throw new Exception("نام واحد تکراری است");if(conversions.Count(x=>x.IsLegacyStockUnit)!=1)throw new Exception("دقیقاً یک واحد باید به‌عنوان واحد قدیمی انبار مشخص شود");
+        if(string.IsNullOrWhiteSpace(baseUnit))throw new Exception("واحد پایه الزامی است");if(conversions.Count==0||conversions.Any(x=>string.IsNullOrWhiteSpace(x.UnitName)||x.FactorToBaseUnit<=0))throw new Exception("نام واحد و مقدار معادل مثبت برای همه ردیف‌ها الزامی است");if(conversions.Select(x=>x.UnitName.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=conversions.Count)throw new Exception("نام واحد تکراری است");if(conversions.Count(x=>x.IsLegacyStockUnit)!=1)throw new Exception("دقیقاً یک واحد باید به‌عنوان واحد ثبت سوابق قبلی مشخص شود");var baseRow=conversions.FirstOrDefault(x=>string.Equals(x.UnitName.Trim(),baseUnit.Trim(),StringComparison.OrdinalIgnoreCase));if(baseRow==null||baseRow.FactorToBaseUnit!=1)throw new Exception("واحد پایه باید در فهرست واحدها وجود داشته باشد و مقدار معادل آن ۱ باشد");
         await using var db=await _factory.CreateDbContextAsync();await using var tx=await db.Database.BeginTransactionAsync();var m=await db.Materials.FindAsync(materialId)??throw new Exception("ماده یافت نشد");var oldLegacy=await db.MaterialUnitConversions.Where(x=>x.MaterialId==materialId&&x.IsLegacyStockUnit).Select(x=>x.FactorToBaseUnit).FirstOrDefaultAsync();if(oldLegacy<=0)oldLegacy=m.BaseQuantity>0?m.BaseQuantity:1;var newLegacy=conversions.Single(x=>x.IsLegacyStockUnit).FactorToBaseUnit;var ratio=newLegacy/oldLegacy;
         var old=await db.MaterialUnitConversions.Where(x=>x.MaterialId==materialId).ToListAsync();db.MaterialUnitConversions.RemoveRange(old);foreach(var c in conversions){c.Id=0;c.MaterialId=materialId;c.UnitName=c.UnitName.Trim();db.MaterialUnitConversions.Add(c);}m.BaseUnitName=baseUnit.Trim();m.BaseQuantity=newLegacy;m.CurrentStock*=ratio;m.MinStockLevel*=ratio;
         var stocks=await db.WarehouseStocks.Where(x=>x.MaterialId==materialId).ToListAsync();foreach(var s in stocks){s.Quantity*=ratio;s.MinStockLevel*=ratio;}
@@ -180,7 +189,14 @@ public class WarehouseService
     public async Task<bool> CodeExistsAsync(string code, int? excludeId = null)
     { await using var db = await _factory.CreateDbContextAsync(); return await db.Materials.AnyAsync(m => m.Code == code && m.Id != excludeId); }
     public async Task AddMaterialAsync(Material m)
-    { await using var db = await _factory.CreateDbContextAsync(); db.Materials.Add(m); await db.SaveChangesAsync(); }
+    {
+        await using var db = await _factory.CreateDbContextAsync();
+        db.Materials.Add(m); await db.SaveChangesAsync();
+        var stockUnit=m.UnitId.HasValue?await db.Units.Where(x=>x.Id==m.UnitId).Select(x=>x.Name).FirstOrDefaultAsync():null;
+        if(!string.IsNullOrWhiteSpace(stockUnit))db.MaterialUnitConversions.Add(new MaterialUnitConversion{MaterialId=m.Id,UnitName=stockUnit,FactorToBaseUnit=m.BaseQuantity>0?m.BaseQuantity:1,IsLegacyStockUnit=true,IsActive=true});
+        if(!string.IsNullOrWhiteSpace(m.BaseUnitName)&&!string.Equals(stockUnit,m.BaseUnitName,StringComparison.OrdinalIgnoreCase))db.MaterialUnitConversions.Add(new MaterialUnitConversion{MaterialId=m.Id,UnitName=m.BaseUnitName,FactorToBaseUnit=1,IsLegacyStockUnit=false,IsActive=true});
+        m.UnitsNormalized=true;await db.SaveChangesAsync();
+    }
     public async Task UpdateMaterialAsync(Material m)
     { await using var db = await _factory.CreateDbContextAsync(); db.Materials.Update(m); await db.SaveChangesAsync(); }
     public async Task ArchiveMaterialAsync(int id)
@@ -248,7 +264,7 @@ public class WarehouseService
         if (mat == null) throw new Exception("ماده یافت نشد");
         var stock=await StockAsync(db,w.WarehouseId.Value,w.MaterialId); if(stock.Quantity<w.Quantity) throw new Exception($"موجودی کافی نیست (موجودی انبار: {stock.Quantity:N3})");
         stock.Quantity-=w.Quantity; w.Status=WithdrawalStatus.Approved; w.ApprovedAt=DateTime.UtcNow; w.ApprovedByUserId=w.CreatedByUserId; w.ApprovedByUsername=w.CreatedByUsername;var latestPurchase=await db.StockEntries.Where(x=>x.MaterialId==w.MaterialId).OrderByDescending(x=>x.EntryDate).ThenByDescending(x=>x.Id).FirstOrDefaultAsync();var pricePerBase=latestPurchase==null?0:latestPurchase.PricePerUnit/(latestPurchase.ConversionFactor<=0?1:latestPurchase.ConversionFactor);
-        db.StockWithdrawals.Add(w); db.InventoryTransactions.Add(new InventoryTransaction{DocumentNumber=Document("OUT"),Type=InventoryTransactionType.Withdrawal,WarehouseId=w.WarehouseId.Value,MaterialId=w.MaterialId,OutgoingQuantity=w.Quantity,BalanceAfter=stock.Quantity,UnitPrice=pricePerBase,TransactionDate=w.WithdrawalDate,Description=w.Reason,CreatedByUserId=w.CreatedByUserId,CreatedByUsername=w.CreatedByUsername});
+        db.StockWithdrawals.Add(w); db.InventoryTransactions.Add(new InventoryTransaction{DocumentNumber=Document("OUT"),Type=InventoryTransactionType.Withdrawal,WarehouseId=w.WarehouseId.Value,MaterialId=w.MaterialId,OutgoingQuantity=w.Quantity,BalanceAfter=stock.Quantity,UnitPrice=pricePerBase,TransactionDate=w.WithdrawalDate,Description=string.IsNullOrWhiteSpace(w.Department)?w.Reason:$"مصرف در بخش {w.Department}"+(string.IsNullOrWhiteSpace(w.Reason)?"":$" — {w.Reason}"),CreatedByUserId=w.CreatedByUserId,CreatedByUsername=w.CreatedByUsername});
         await db.SaveChangesAsync(); await SyncTotalAsync(db,w.MaterialId); await db.SaveChangesAsync(); await tx.CommitAsync();
     }
     public async Task<List<StockWithdrawal>> GetWithdrawalsAsync(int? materialId = null, string? search = null)
@@ -256,8 +272,13 @@ public class WarehouseService
         await using var db = await _factory.CreateDbContextAsync();
         var q = db.StockWithdrawals.Include(w => w.Material).Include(w=>w.Warehouse).AsQueryable();
         if (materialId.HasValue) q = q.Where(w => w.MaterialId == materialId);
-        if (!string.IsNullOrWhiteSpace(search)) q = q.Where(w => w.Material!.Name.Contains(search) || w.Material.Code.Contains(search));
+        if (!string.IsNullOrWhiteSpace(search)) q = q.Where(w => w.Material!.Name.Contains(search) || w.Material.Code.Contains(search) || w.Department.Contains(search));
         return await q.OrderByDescending(w => w.WithdrawalDate).Take(200).ToListAsync();
+    }
+    public async Task<List<string>> GetWithdrawalDepartmentsAsync()
+    {
+        await using var db = await _factory.CreateDbContextAsync();
+        return await db.StockWithdrawals.Where(w => w.Department != "").Select(w => w.Department).Distinct().OrderBy(x => x).ToListAsync();
     }
     public async Task<List<StockWithdrawal>> GetPendingWithdrawalsAsync()
     {

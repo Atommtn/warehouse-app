@@ -102,6 +102,7 @@ public class StockWithdrawal
     public decimal Quantity { get; set; }
     public DateTime WithdrawalDate { get; set; }
     public string Reason { get; set; } = "";
+    public string Department { get; set; } = "";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int CreatedByUserId { get; set; }
     public string CreatedByUsername { get; set; } = "";

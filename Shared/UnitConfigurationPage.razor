@@ -1,8 +1,53 @@
 @using WarehouseApp.Models
 @using WarehouseApp.Services
 @inject WarehouseService Service
-<div class="page-header"><h2>⚖️ بازتعریف واحدها و سوابق قبلی</h2></div>
-<div class="info-banner">هر ضریب نشان می‌دهد «یک واحد از این ردیف چند واحد پایه است». مثال تخم‌مرغ با واحد پایه کیلوگرم: عدد=0.055، شانه ۳۰ عددی=1.650، کارتن ۱۲ شانه‌ای=19.800، کیلوگرم=1، گرم=0.001.</div>
-<div class="form-card"><div class="form-grid"><div class="form-group"><label>جستجوی ماده</label><input class="form-input" @bind="search" @bind:event="oninput" placeholder="نام یا کد..."/></div><div class="form-group"><label>ماده</label><select class="form-input" value="@materialId" @onchange="SelectMaterial"><option value="0">انتخاب کنید...</option>@foreach(var m in FilteredMaterials){<option value="@m.Id">[@m.Code] @m.Name</option>}</select></div><div class="form-group"><label>واحد پایه موجودی و رسپی</label><input class="form-input" @bind="baseUnit" placeholder="مثلاً کیلوگرم"/></div></div></div>
-@if(materialId>0){<div class="form-card"><h3>واحدهای قابل استفاده</h3><div class="table-responsive"><table class="data-table"><thead><tr><th>نام واحد</th><th>ضریب به واحد پایه</th><th>واحد قدیمی سوابق</th><th></th></tr></thead><tbody>@foreach(var row in rows){<tr><td><input class="form-input" @bind="row.UnitName"/></td><td><input class="form-input" type="number" step="0.000001" @bind="row.FactorToBaseUnit"/></td><td><input type="radio" name="legacy" checked="@row.IsLegacyStockUnit" @onchange="()=>SetLegacy(row)"/></td><td><button class="btn-icon" @onclick="()=>rows.Remove(row)">🗑️</button></td></tr>}</tbody></table></div><button class="btn btn-secondary btn-sm" @onclick="AddRow">+ واحد جدید</button><label class="permission-item unit-confirm"><input type="checkbox" @bind="confirmed"/><span>تأیید می‌کنم ضرایب بالا برای محاسبه مجدد تمام ورودها، خروج‌ها، موجودی و کاردکس این ماده صحیح است.</span></label><button class="btn btn-primary" disabled="@(!confirmed)" @onclick="Save">ذخیره و محاسبه مجدد سوابق</button>@if(!string.IsNullOrEmpty(message)){<div class="alert @(success?"alert-success":"alert-error")">@message</div>}</div>}
-@code{List<Material> materials=new();List<MaterialUnitConversion> rows=new();string search="",baseUnit="",message="";int materialId;bool confirmed,success;IEnumerable<Material> FilteredMaterials=>string.IsNullOrWhiteSpace(search)?materials:materials.Where(x=>x.Name.Contains(search,StringComparison.OrdinalIgnoreCase)||x.Code.Contains(search,StringComparison.OrdinalIgnoreCase));protected override async Task OnInitializedAsync()=>materials=await Service.GetMaterialsAsync();async Task SelectMaterial(ChangeEventArgs e){materialId=int.TryParse(e.Value?.ToString(),out var id)?id:0;var m=materials.FirstOrDefault(x=>x.Id==materialId);baseUnit=m?.BaseUnitName??"";rows=materialId>0?await Service.GetMaterialUnitsAsync(materialId):new();confirmed=false;message="";}void AddRow()=>rows.Add(new MaterialUnitConversion{MaterialId=materialId,FactorToBaseUnit=1});void SetLegacy(MaterialUnitConversion selected){foreach(var x in rows)x.IsLegacyStockUnit=ReferenceEquals(x,selected);}async Task Save(){try{await Service.ConfigureMaterialUnitsAsync(materialId,baseUnit,rows);success=true;message="واحدها و تمام سوابق این ماده با موفقیت محاسبه مجدد شدند.";confirmed=false;rows=await Service.GetMaterialUnitsAsync(materialId);}catch(Exception ex){success=false;message=ex.Message;}}}
+
+<div class="page-header"><h2>⚖️ تعریف واحدهای کالا و اصلاح سوابق</h2></div>
+<div class="info-banner">
+    ابتدا «واحد پایه موجودی و رسپی» را انتخاب کنید. سپس مشخص کنید هر واحد خرید چند واحد پایه است؛
+    مثلاً برای آرد: <strong>هر ۱ گونی = ۴۰ کیلوگرم</strong>. در این حالت ۳۳ گونی قبلی به‌صورت ۱۳۲۰ کیلوگرم موجودی محاسبه می‌شود.
+</div>
+
+<div class="form-card">
+    <div class="form-grid">
+        <div class="form-group"><label>جستجوی ماده</label><input class="form-input" @bind="search" @bind:event="oninput" placeholder="نام یا کد..."/></div>
+        <div class="form-group"><label>ماده</label><select class="form-input" value="@materialId" @onchange="SelectMaterial"><option value="0">انتخاب کنید...</option>@foreach(var m in FilteredMaterials){<option value="@m.Id">[@m.Code] @m.Name</option>}</select></div>
+        <div class="form-group"><label>واحد پایه موجودی و رسپی</label><select class="form-input" value="@baseUnit" @onchange="BaseUnitChanged"><option value="">انتخاب کنید...</option>@foreach(var u in availableUnits){<option value="@u.Name">@u.Name</option>}</select><small class="form-hint">واحد نمایش موجودی، خروج و محاسبات رسپی</small></div>
+    </div>
+</div>
+
+@if(materialId>0)
+{
+    <div class="form-card">
+        <div class="unit-config-header"><h3>واحدهای قابل استفاده برای @SelectedMaterialName</h3><span class="text-muted">واحد جدید را از بخش «تعاریف اولیه ← واحدها» بسازید.</span></div>
+        <div class="unit-conversion-list">
+            @foreach(var row in rows)
+            {
+                <div class="unit-conversion-card">
+                    <div class="form-group"><label>نام واحد</label><select class="form-input" @bind="row.UnitName"><option value="">انتخاب کنید...</option>@foreach(var u in availableUnits){<option value="@u.Name">@u.Name</option>}</select></div>
+                    <div class="conversion-sentence"><span>هر</span><strong>۱ @row.UnitName</strong><span>برابر است با</span><input class="form-input" type="number" step="0.000001" min="0.000001" @bind="row.FactorToBaseUnit"/><strong>@baseUnit</strong></div>
+                    <label class="legacy-unit-choice"><input type="radio" name="legacy" checked="@row.IsLegacyStockUnit" @onchange="()=>SetLegacy(row)"/><span>موجودی و سوابق قبلی با این واحد ثبت شده است</span></label>
+                    <button class="btn btn-danger btn-sm" @onclick="()=>rows.Remove(row)">حذف واحد</button>
+                </div>
+            }
+        </div>
+        <button class="btn btn-secondary btn-sm" @onclick="AddRow">+ افزودن واحد دیگر</button>
+        <label class="permission-item unit-confirm"><input type="checkbox" @bind="confirmed"/><span>تأیید می‌کنم اطلاعات بالا صحیح است و سوابق قبلی این ماده بر همین اساس محاسبه مجدد شود.</span></label>
+        <button class="btn btn-primary" disabled="@(!confirmed)" @onclick="Save">ذخیره و محاسبه مجدد موجودی و سوابق</button>
+        @if(!string.IsNullOrEmpty(message)){<div class="alert @(success?"alert-success":"alert-error")">@message</div>}
+    </div>
+}
+
+@code {
+    List<Material> materials=new(); List<Unit> availableUnits=new(); List<MaterialUnitConversion> rows=new();
+    string search="",baseUnit="",message=""; int materialId; bool confirmed,success;
+    IEnumerable<Material> FilteredMaterials=>string.IsNullOrWhiteSpace(search)?materials:materials.Where(x=>x.Name.Contains(search,StringComparison.OrdinalIgnoreCase)||x.Code.Contains(search,StringComparison.OrdinalIgnoreCase));
+    string SelectedMaterialName=>materials.FirstOrDefault(x=>x.Id==materialId)?.Name??"کالا";
+
+    protected override async Task OnInitializedAsync(){materials=await Service.GetMaterialsAsync();availableUnits=await Service.GetUnitsAsync();}
+    async Task SelectMaterial(ChangeEventArgs e){materialId=int.TryParse(e.Value?.ToString(),out var id)?id:0;var m=materials.FirstOrDefault(x=>x.Id==materialId);baseUnit=m?.BaseUnitName??"";rows=materialId>0?await Service.GetMaterialUnitsAsync(materialId):new();confirmed=false;message="";}
+    void BaseUnitChanged(ChangeEventArgs e){baseUnit=e.Value?.ToString()??"";var row=rows.FirstOrDefault(x=>string.Equals(x.UnitName,baseUnit,StringComparison.OrdinalIgnoreCase));if(row==null&&!string.IsNullOrWhiteSpace(baseUnit))rows.Add(new MaterialUnitConversion{MaterialId=materialId,UnitName=baseUnit,FactorToBaseUnit=1});else if(row!=null)row.FactorToBaseUnit=1;confirmed=false;}
+    void AddRow()=>rows.Add(new MaterialUnitConversion{MaterialId=materialId,FactorToBaseUnit=1});
+    void SetLegacy(MaterialUnitConversion selected){foreach(var x in rows)x.IsLegacyStockUnit=ReferenceEquals(x,selected);}
+    async Task Save(){try{await Service.ConfigureMaterialUnitsAsync(materialId,baseUnit,rows);success=true;message="واحدها، موجودی، ورودها، خروج‌ها، رسپی و کاردکس این ماده محاسبه مجدد شدند.";confirmed=false;rows=await Service.GetMaterialUnitsAsync(materialId);materials=await Service.GetMaterialsAsync();}catch(Exception ex){success=false;message=ex.Message;}}
+}

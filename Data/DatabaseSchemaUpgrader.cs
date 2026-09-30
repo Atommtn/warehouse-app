@@ -94,6 +94,7 @@ BEGIN
  ALTER TABLE [StockWithdrawals] ADD [EnteredUnitName] nvarchar(100) NOT NULL CONSTRAINT [DF_StockWithdrawals_EnteredUnitName] DEFAULT N'';
  ALTER TABLE [StockWithdrawals] ADD [ConversionFactor] decimal(18,6) NOT NULL CONSTRAINT [DF_StockWithdrawals_ConversionFactor] DEFAULT 1;
 END;
+IF COL_LENGTH('StockWithdrawals','Department') IS NULL ALTER TABLE [StockWithdrawals] ADD [Department] nvarchar(200) NOT NULL CONSTRAINT [DF_StockWithdrawals_Department] DEFAULT N'';
 IF COL_LENGTH('RecipeIngredients','UnitName') IS NULL ALTER TABLE [RecipeIngredients] ADD [UnitName] nvarchar(100) NOT NULL CONSTRAINT [DF_RecipeIngredients_UnitName] DEFAULT N'';
 IF OBJECT_ID(N'[MaterialUnitConversions]',N'U') IS NULL
 BEGIN
@@ -112,11 +113,14 @@ END;
 SET XACT_ABORT ON;
 BEGIN TRANSACTION;
 BEGIN TRY
-IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'MAIN') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'MAIN',N'انبار اصلی');
-IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'SECOND') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'SECOND',N'انبار دوم');
-IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'BOX') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'BOX',N'انبار جعبه');
-IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'STORE') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'STORE',N'انبار فروشگاه');
-IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'COLD') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'COLD',N'سردخانه');
+IF NOT EXISTS(SELECT 1 FROM [AppDataMigrations] WHERE [MigrationKey]=N'merge-duplicate-warehouses-v2')
+BEGIN
+ IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'MAIN') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'MAIN',N'انبار اصلی');
+ IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'SECOND') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'SECOND',N'انبار دوم');
+ IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'BOX') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'BOX',N'انبار جعبه');
+ IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'STORE') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'STORE',N'انبار فروشگاه');
+ IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'COLD') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'COLD',N'سردخانه');
+END;
 
 DECLARE @mainId int=(SELECT TOP(1) [Id] FROM [Warehouses] WHERE [Code]=N'MAIN');
 UPDATE [StockEntries] SET [WarehouseId]=@mainId WHERE [WarehouseId] IS NULL;
@@ -185,6 +189,30 @@ BEGIN
  INSERT INTO [InventoryTransactions]([DocumentNumber],[Type],[WarehouseId],[MaterialId],[IncomingQuantity],[OutgoingQuantity],[BalanceAfter],[UnitPrice],[TransactionDate],[Description],[CreatedByUserId],[CreatedByUsername])
  SELECT CONCAT(N'RECON-',m.[Code],N'-',ws.[WarehouseId]),5,ws.[WarehouseId],ws.[MaterialId],CASE WHEN ws.[Quantity]-ISNULL(p.qty,0)-ISNULL(h.qty,0)>0 THEN ws.[Quantity]-ISNULL(p.qty,0)-ISNULL(h.qty,0) ELSE 0 END,CASE WHEN ws.[Quantity]-ISNULL(p.qty,0)-ISNULL(h.qty,0)<0 THEN -(ws.[Quantity]-ISNULL(p.qty,0)-ISNULL(h.qty,0)) ELSE 0 END,ws.[Quantity]-ISNULL(p.qty,0),m.[PricePerUnit],@cutover,N'اصلاح شفاف مغایرت مانده با سوابق قدیمی',0,N'system' FROM [WarehouseStocks] ws JOIN [Materials] m ON m.[Id]=ws.[MaterialId] LEFT JOIN hist h ON h.[WarehouseId]=ws.[WarehouseId] AND h.[MaterialId]=ws.[MaterialId] LEFT JOIN postcutover p ON p.[WarehouseId]=ws.[WarehouseId] AND p.[MaterialId]=ws.[MaterialId] WHERE ws.[Quantity]-ISNULL(p.qty,0)<>ISNULL(h.qty,0);
  INSERT INTO [AppDataMigrations] VALUES(N'allocate-warehouses-and-rebuild-cardex-v1',SYSUTCDATETIME());
+END;
+
+IF NOT EXISTS(SELECT 1 FROM [AppDataMigrations] WHERE [MigrationKey]=N'merge-duplicate-warehouses-v2')
+BEGIN
+ DECLARE @warehouseMap TABLE([SourceId] int,[TargetId] int);
+ INSERT INTO @warehouseMap
+ SELECT s.[Id],t.[Id] FROM (VALUES(N'MAIN',N'010000'),(N'SECOND',N'020000'),(N'BOX',N'030000'),(N'STORE',N'040000'),(N'COLD',N'050000')) v([SourceCode],[TargetCode])
+ JOIN [Warehouses] s ON s.[Code]=v.[SourceCode]
+ JOIN [Warehouses] t ON t.[Code]=v.[TargetCode] AND t.[Id]<>s.[Id];
+
+ UPDATE target SET target.[Quantity]=target.[Quantity]+source.[Quantity],target.[MinStockLevel]=CASE WHEN target.[MinStockLevel]>source.[MinStockLevel] THEN target.[MinStockLevel] ELSE source.[MinStockLevel] END
+ FROM [WarehouseStocks] source JOIN @warehouseMap map ON map.[SourceId]=source.[WarehouseId]
+ JOIN [WarehouseStocks] target ON target.[WarehouseId]=map.[TargetId] AND target.[MaterialId]=source.[MaterialId];
+ DELETE source FROM [WarehouseStocks] source JOIN @warehouseMap map ON map.[SourceId]=source.[WarehouseId]
+ WHERE EXISTS(SELECT 1 FROM [WarehouseStocks] target WHERE target.[WarehouseId]=map.[TargetId] AND target.[MaterialId]=source.[MaterialId]);
+ UPDATE source SET source.[WarehouseId]=map.[TargetId] FROM [WarehouseStocks] source JOIN @warehouseMap map ON map.[SourceId]=source.[WarehouseId];
+ UPDATE e SET e.[WarehouseId]=map.[TargetId] FROM [StockEntries] e JOIN @warehouseMap map ON map.[SourceId]=e.[WarehouseId];
+ UPDATE w SET w.[WarehouseId]=map.[TargetId] FROM [StockWithdrawals] w JOIN @warehouseMap map ON map.[SourceId]=w.[WarehouseId];
+ UPDATE t SET t.[WarehouseId]=map.[TargetId] FROM [InventoryTransactions] t JOIN @warehouseMap map ON map.[SourceId]=t.[WarehouseId];
+ UPDATE t SET t.[RelatedWarehouseId]=map.[TargetId] FROM [InventoryTransactions] t JOIN @warehouseMap map ON map.[SourceId]=t.[RelatedWarehouseId];
+ ;WITH recalculated AS(SELECT [Id],SUM([IncomingQuantity]-[OutgoingQuantity]) OVER(PARTITION BY [WarehouseId],[MaterialId] ORDER BY [TransactionDate],[Id] ROWS UNBOUNDED PRECEDING) AS [NewBalance] FROM [InventoryTransactions])
+ UPDATE t SET t.[BalanceAfter]=r.[NewBalance] FROM [InventoryTransactions] t JOIN recalculated r ON r.[Id]=t.[Id];
+ DELETE w FROM [Warehouses] w JOIN @warehouseMap map ON map.[SourceId]=w.[Id];
+ INSERT INTO [AppDataMigrations] VALUES(N'merge-duplicate-warehouses-v2',SYSUTCDATETIME());
 END;
 COMMIT TRANSACTION;
 END TRY

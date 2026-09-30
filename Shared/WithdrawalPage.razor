@@ -27,6 +27,11 @@
             <PersianDatePicker Value="@wDate" ValueChanged="@(d => wDate = d)" Placeholder="1403/01/15" />
         </div>
         <div class="form-group">
+            <label>مصرف در بخش *</label>
+            <input @bind="department" list="withdrawal-departments" class="form-input" placeholder="مثال: تولید نان، شیرینی‌پزی، فروشگاه" />
+            <datalist id="withdrawal-departments">@foreach(var d in departments){<option value="@d"></option>}</datalist>
+        </div>
+        <div class="form-group">
             <label>دلیل خروج</label>
             <input @bind="reason" class="form-input" placeholder="مثال: مصرف در تولید" />
         </div>
@@ -43,11 +48,11 @@
 
 <div class="section-title">آخرین خروجی‌ها</div>
 <div class="search-bar">
-    <input value="@withdrawalSearch" @oninput="OnWithdrawalSearch" class="form-input search-input" placeholder="🔍 جستجو در خروجی‌ها بر اساس نام یا کد ماده..." />
+    <input value="@withdrawalSearch" @oninput="OnWithdrawalSearch" class="form-input search-input" placeholder="🔍 جستجو در خروجی‌ها بر اساس نام یا کد ماده یا بخش..." />
 </div>
 <div class="table-responsive">
     <table class="data-table">
-        <thead><tr><th>انبار</th><th>کد</th><th>ماده</th><th>مقدار</th><th>تاریخ</th><th>کاربر</th><th>وضعیت</th></tr></thead>
+        <thead><tr><th>انبار</th><th>کد</th><th>ماده</th><th>مقدار</th><th>بخش مصرف‌کننده</th><th>تاریخ</th><th>کاربر</th><th>وضعیت</th></tr></thead>
         <tbody>
             @foreach (var w in withdrawals)
             {
@@ -56,6 +61,7 @@
                     <td><code>@w.Material?.Code</code></td>
                     <td>@w.Material?.Name</td>
                     <td>@w.EnteredQuantity.ToString("N3") @w.EnteredUnitName <small class="text-muted">= @w.Quantity.ToString("N3") @w.Material?.BaseUnitName</small></td>
+                    <td>@w.Department</td>
                     <td>@w.WithdrawalDate.ToShamsi()</td>
                     <td>@w.CreatedByUsername</td>
                     <td>
@@ -72,7 +78,7 @@
 @code {
     List<Material> materials=new(); List<StockWithdrawal> withdrawals=new(); List<Warehouse> warehouses=new();
     int warehouseId; decimal selectedStock;
-    Material? sel; int selId=0; decimal qty=0; string reason="",ok="",err="",selectedUnit="";List<MaterialUnitConversion> materialUnits=new();
+    Material? sel; int selId=0; decimal qty=0; string reason="",department="",ok="",err="",selectedUnit="";List<MaterialUnitConversion> materialUnits=new();List<string> departments=new();
     DateTime wDate=DateTime.Today;
     string materialSearch="", withdrawalSearch="";
 
@@ -83,6 +89,8 @@
         materials = await Warehouse.GetMaterialsAsync();
         warehouses = await Warehouse.GetWarehousesAsync(); if(warehouseId==0) warehouseId=warehouses.FirstOrDefault()?.Id??0;
         withdrawals = await Warehouse.GetWithdrawalsAsync();
+        var known = new[] { "تولید نان", "شیرینی‌پزی", "فروشگاه", "آشپزخانه" };
+        departments = known.Union(await Warehouse.GetWithdrawalDepartmentsAsync()).ToList();
     }
 
     async Task OnMaterialChange(ChangeEventArgs e)
@@ -112,15 +120,16 @@
         if (selId==0) { err="ماده را انتخاب کنید"; return; }
         if (warehouseId==0) { err="انبار مبدأ را انتخاب کنید"; return; }
         if (qty<=0)   { err="مقدار باید بیشتر از صفر باشد"; return; }
+        if (string.IsNullOrWhiteSpace(department)) { err="بخش مصرف‌کننده را مشخص کنید"; return; }
         try
         {
             await Warehouse.AddWithdrawalAsync(new StockWithdrawal
             {
-                MaterialId=selId, WarehouseId=warehouseId, EnteredQuantity=qty,EnteredUnitName=selectedUnit,Quantity=qty, WithdrawalDate=wDate, Reason=reason,
+                MaterialId=selId, WarehouseId=warehouseId, EnteredQuantity=qty,EnteredUnitName=selectedUnit,Quantity=qty, WithdrawalDate=wDate, Reason=reason, Department=department.Trim(),
                 CreatedByUserId=Auth.CurrentUser!.Id, CreatedByUsername=Auth.CurrentUser.Username,
                 Status = WithdrawalStatus.Approved
             });
-            ok = $"✅ {qty} {selectedUnit} از [{sel?.Code}] {sel?.Name} در {wDate.ToShamsi()} ثبت شد";
+            ok = $"✅ {qty} {selectedUnit} از [{sel?.Code}] {sel?.Name} برای بخش {department.Trim()} در {wDate.ToShamsi()} ثبت شد";
             await Load(); Reset();
         }
         catch (Exception ex) { err = $"❌ {ex.Message}"; }

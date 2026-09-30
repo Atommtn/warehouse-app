@@ -50,7 +50,7 @@ else
 {
     <div class="table-responsive">
         <table class="data-table">
-            <thead><tr><th>کد</th><th>ماده</th><th>مقدار</th><th>تاریخ خروج</th><th>کاربر</th><th>وضعیت</th><th>تایید‌کننده</th></tr></thead>
+            <thead><tr><th>کد</th><th>ماده</th><th>مقدار</th><th>بخش مصرف‌کننده</th><th>تاریخ خروج</th><th>کاربر</th><th>وضعیت</th><th>تایید‌کننده</th></tr></thead>
             <tbody>
                 @foreach (var w in withdrawals)
                 {
@@ -58,6 +58,7 @@ else
                         <td><code>@w.Material?.Code</code></td>
                         <td>@w.Material?.Name</td>
                         <td>@w.EnteredQuantity.ToString("N3") @w.EnteredUnitName <small class="text-muted">= @w.Quantity.ToString("N3") @w.Material?.BaseUnitName</small></td>
+                        <td>@w.Department</td>
                         <td>@w.WithdrawalDate.ToShamsi()</td>
                         <td>@w.CreatedByUsername</td>
                         <td>
@@ -92,9 +93,9 @@ else
         }
         else
         {
-            csv.AppendLine("کد,ماده,مقدار,واحد,تاریخ خروج,کاربر,وضعیت,تایید‌کننده");
+            csv.AppendLine("کد,ماده,مقدار,واحد,بخش مصرف‌کننده,تاریخ خروج,کاربر,وضعیت,تایید‌کننده");
             foreach (var w in withdrawals)
-                csv.AppendLine($"{w.Material?.Code},{w.Material?.Name},{w.EnteredQuantity},{w.EnteredUnitName},{w.WithdrawalDate.ToShamsi()},{w.CreatedByUsername},{w.Status},{w.ApprovedByUsername}");
+                csv.AppendLine($"{w.Material?.Code},{w.Material?.Name},{w.EnteredQuantity},{w.EnteredUnitName},{w.Department},{w.WithdrawalDate.ToShamsi()},{w.CreatedByUsername},{w.Status},{w.ApprovedByUsername}");
         }
         var bytes = System.Text.Encoding.UTF8.GetPreamble()
             .Concat(System.Text.Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
