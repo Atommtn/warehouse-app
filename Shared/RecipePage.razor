@@ -60,23 +60,23 @@ else
     <div class="form-card">
         <h3>@(editId == 0 ? "رسپی جدید" : "ویرایش رسپی")</h3>
 
-        <div class="form-row">
+        <div class="form-grid">
             <div class="form-group">
                 <label>نام رسپی *</label>
-                <input class="form-control" @bind="form.Name" placeholder="مثال: کیک شکلاتی" />
+                <input class="form-input" @bind="form.Name" placeholder="مثال: کیک شکلاتی" />
             </div>
             <div class="form-group">
                 <label>افت پخت (%)</label>
-                <input class="form-control" type="number" @bind="form.BakingLossPercent" min="0" max="99" step="0.5" />
+                <input class="form-input" type="number" @bind="form.BakingLossPercent" min="0" max="99" step="0.5" />
             </div>
             <div class="form-group">
                 <label>وزن هر دانه (گرم)</label>
-                <input class="form-control" type="number" @bind="form.PieceWeightGrams" min="0" step="1" />
+                <input class="form-input" type="number" @bind="form.PieceWeightGrams" min="0" step="1" />
             </div>
         </div>
         <div class="form-group">
             <label>یادداشت</label>
-            <input class="form-control" @bind="form.Notes" />
+            <input class="form-input" @bind="form.Notes" />
         </div>
 
         <!-- مواد اصلی -->
@@ -91,7 +91,7 @@ else
                         <option value="0">انتخاب ماده...</option>
                         @foreach (var m in FilterMaterials(ing))
                         {
-                            <option value="@m.Id">[@m.Code] @m.Name (@m.Unit?.Name — @m.BaseQuantity @m.BaseUnitName/واحد، فی @m.PricePerUnit.ToString("N0"))</option>
+                            <option value="@m.Id">[@m.Code] @m.Name — واحد پایه: @m.BaseUnitName</option>
                         }
                     </select></div>
                     <div class="form-group"><label>مقدار</label><input class="form-input" type="number" @bind="ing.Quantity" min="0" step="0.001" /></div>
@@ -99,7 +99,7 @@ else
                     <button class="btn btn-sm btn-danger recipe-remove" @onclick="()=>mainIngredients.Remove(ing)">حذف</button>
                 </div>
             }
-            <button class="btn btn-sm btn-outline" @onclick="AddMain">+ افزودن ماده</button>
+            <button class="btn btn-sm btn-secondary" @onclick="AddMain">+ افزودن ماده</button>
         </div>
 
         <!-- روکاری -->
@@ -114,7 +114,7 @@ else
                         <option value="0">انتخاب ماده...</option>
                         @foreach (var m in FilterMaterials(ing))
                         {
-                            <option value="@m.Id">[@m.Code] @m.Name (@m.Unit?.Name — @m.BaseQuantity @m.BaseUnitName/واحد، فی @m.PricePerUnit.ToString("N0"))</option>
+                            <option value="@m.Id">[@m.Code] @m.Name — واحد پایه: @m.BaseUnitName</option>
                         }
                     </select></div>
                     <div class="form-group"><label>مقدار</label><input class="form-input" type="number" @bind="ing.Quantity" min="0" step="0.001" /></div>
@@ -122,12 +122,12 @@ else
                     <button class="btn btn-sm btn-danger recipe-remove" @onclick="()=>toppingIngredients.Remove(ing)">حذف</button>
                 </div>
             }
-            <button class="btn btn-sm btn-outline" @onclick="AddTopping">+ افزودن روکاری</button>
+            <button class="btn btn-sm btn-secondary" @onclick="AddTopping">+ افزودن روکاری</button>
         </div>
 
         @if (!string.IsNullOrEmpty(errorMsg))
         {
-            <div class="alert alert-danger">@errorMsg</div>
+            <div class="alert alert-error">@errorMsg</div>
         }
 
         <div class="form-actions">
@@ -181,7 +181,7 @@ else
             <h4>📈 محاسبه قیمت فروش</h4>
             <div class="profit-row">
                 <label>درصد سود:</label>
-                <input type="number" class="form-control profit-input" @bind="profitPercent" min="0" max="500" step="1" />
+                <input type="number" class="form-input profit-input" @bind="profitPercent" min="0" max="500" step="1" />
                 <span>%</span>
                 <button class="btn btn-primary btn-sm" @onclick="RecalcProfit">محاسبه</button>
             </div>

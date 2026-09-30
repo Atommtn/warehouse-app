@@ -27,6 +27,8 @@
                     @foreach (var g in groups) { <option value="@g.Id">@g.Name</option> }
                 </select>
             </div>
+            @if (!editId.HasValue)
+            {
             <div class="form-group">
                 <label>واحد انبار *</label>
                 <select @bind="fUnitId" class="form-input">
@@ -35,7 +37,7 @@
                 </select>
             </div>
             <div class="form-group">
-                <label>مقدار واحد پایه در هر واحد انبار *</label>
+                <label>هر ۱ واحد انبار چند واحد پایه است؟ *</label>
                 <input @bind="fBaseQuantity" type="number" step="0.001" min="0.001" class="form-input" placeholder="مثال: ۴۰" />
                 <small class="form-hint">مثال: ۱ گونی = ۴۰ کیلوگرم → عدد ۴۰ را وارد کنید</small>
             </div>
@@ -47,6 +49,12 @@
                 </select>
                 <small class="form-hint">در رسپی مقدار را بر اساس این واحد وارد می‌کنید</small>
             </div>
+            }
+            else
+            {
+            <div class="form-group"><label>واحدها</label><div class="form-hint">برای تغییر واحد پایه یا واحدهای خرید (گونی، کارتن، شانه و...) از صفحه‌ی «تعریف واحدهای کالا» استفاده کنید تا موجودی و سوابق هم درست محاسبه شوند.</div>
+            </div>
+            }
             <div class="form-group"><label>حد هشدار موجودی</label><input @bind="fMinStock" type="number" step="0.01" class="form-input" /></div>
             <div class="form-group">
                 <label>تأمین‌کننده</label>
@@ -75,7 +83,7 @@
         <thead>
             <tr>
                 <th>کد</th><th>نام</th><th>گروه</th><th>واحد انبار</th>
-                <th>ضریب تبدیل</th><th>واحد پایه</th>
+                <th>تبدیل واحد</th><th>واحد پایه</th>
                 <th>موجودی</th><th>هشدار</th><th>تأمین‌کننده</th><th>وضعیت</th>
                 @if (Auth.IsManager) { <th></th> }
             </tr>
@@ -90,9 +98,9 @@
                     <td>@(m.Unit?.Name??"-")</td>
                     <td class="text-center">
                         @if (m.BaseQuantity != 1)
-                        { <span class="conversion-badge">@m.BaseQuantity @m.BaseUnitName / واحد</span> }
+                        { <span class="conversion-badge">۱ @(m.Unit?.Name??"واحد") = @m.BaseQuantity.ToString("0.###") @m.BaseUnitName</span> }
                         else
-                        { <span class="text-muted">@m.BaseQuantity</span> }
+                        { <span class="text-muted">-</span> }
                     </td>
                     <td>@m.BaseUnitName</td>
                     <td>@m.CurrentStock.ToString("N2") @m.BaseUnitName</td>
@@ -168,16 +176,15 @@
         if (string.IsNullOrWhiteSpace(fCode)) { err="کد ماده اجباری است"; return; }
         if (string.IsNullOrWhiteSpace(fName)) { err="نام ماده اجباری است"; return; }
         if (string.IsNullOrWhiteSpace(fBaseUnitName)) { err="واحد پایه اجباری است"; return; }
-        if (fBaseQuantity <= 0) { err="ضریب تبدیل باید بزرگتر از صفر باشد"; return; }
+        if (fBaseQuantity <= 0) { err="مقدار واحد پایه در هر واحد انبار باید بزرگتر از صفر باشد"; return; }
         if (await Warehouse.CodeExistsAsync(fCode, editId)) { err=$"کد {fCode} قبلاً ثبت شده"; return; }
         if (editId.HasValue)
         {
             var m = await Warehouse.GetMaterialAsync(editId.Value);
             if (m!=null)
             {
-                m.Code=fCode; m.Name=fName; m.GroupId=fGroupId; m.UnitId=fUnitId;
+                m.Code=fCode; m.Name=fName; m.GroupId=fGroupId;
                 m.MinStockLevel=fMinStock; m.SupplierId=fSupplierId; m.Notes=fNotes;
-                m.BaseQuantity=fBaseQuantity; m.BaseUnitName=fBaseUnitName;
                 await Warehouse.UpdateMaterialAsync(m);
             }
         }

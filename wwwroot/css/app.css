@@ -512,6 +512,7 @@ code { background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:.78rem;
 .unit-conversion-card { display:grid; grid-template-columns:minmax(160px,220px) minmax(320px,1fr) minmax(220px,auto) auto; align-items:end; gap:1rem; padding:1rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; }
 .conversion-sentence { display:flex; align-items:center; gap:.55rem; min-height:42px; white-space:nowrap; }
 .conversion-sentence input { width:130px; }
+.conversion-sentence .conversion-ref { width:auto; min-width:110px; }
 .legacy-unit-choice { display:flex; align-items:center; gap:.5rem; min-height:42px; font-size:.86rem; }
 .quantity-with-action { display:flex; gap:.5rem; }
 .quantity-with-action input { min-width:0; }

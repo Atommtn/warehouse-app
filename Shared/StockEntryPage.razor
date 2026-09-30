@@ -12,16 +12,17 @@
             <div class="form-group"><label>انبار مقصد *</label><select @bind="warehouseId" class="form-input"><option value="0">انتخاب کنید...</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
             <div class="form-group">
                 <label>ماده اولیه *</label>
+                <input value="@materialSearch" @oninput="e=>materialSearch=e.Value?.ToString()??string.Empty" class="form-input" placeholder="🔍 جستجوی نام یا کد ماده..." />
                 <select value="@selId" @onchange="OnMaterialChange" class="form-input">
                     <option value="0">انتخاب کنید...</option>
-                    @foreach (var m in materials) { <option value="@m.Id">[@m.Code] @m.Name (@(m.Unit?.Name ?? ""))</option> }
+                    @foreach (var m in FilteredMaterials) { <option value="@m.Id">[@m.Code] @m.Name</option> }
                 </select>
             </div>
             <div class="form-group">
                 <label>مقدار *</label>
                 <input @bind="qty" type="number" step="0.01" class="form-input" />
             </div>
-            <div class="form-group"><label>واحد ورود *</label><select class="form-input" @bind="selectedUnit" @bind:after="RecalcPrice"><option value="">انتخاب کنید...</option>@foreach(var u in materialUnits){<option value="@u.UnitName">@u.UnitName (× @u.FactorToBaseUnit.ToString("N6") @selectedMaterial?.BaseUnitName)</option>}</select></div>
+            <div class="form-group"><label>واحد ورود *</label><select class="form-input" @bind="selectedUnit" @bind:after="RecalcPrice"><option value="">انتخاب کنید...</option>@foreach(var u in materialUnits){<option value="@u.UnitName">@u.UnitName (هر ۱ @u.UnitName = @u.FactorToBaseUnit.ToString("0.###") @selectedMaterial?.BaseUnitName)</option>}</select></div>
             @if (Auth.CanViewPrice)
             {
                 <div class="form-group">
@@ -167,7 +168,8 @@ else
     List<StockEntry> filteredEntries = new();
 
     int selId = 0; decimal qty = 0, price = 0, basePrice = 0;string selectedUnit="";Material? selectedMaterial;List<MaterialUnitConversion> materialUnits=new();
-    string notes = "", ok = "", err = "";
+    string notes = "", ok = "", err = "", materialSearch = "";
+    IEnumerable<Material> FilteredMaterials => string.IsNullOrWhiteSpace(materialSearch) ? materials : materials.Where(x => x.Id == selId || x.Name.Contains(materialSearch, StringComparison.OrdinalIgnoreCase) || x.Code.Contains(materialSearch, StringComparison.OrdinalIgnoreCase));
     DateTime entryDate = DateTime.Today, expiryDate = DateTime.Today.AddMonths(6);
 
     bool editMode = false;
@@ -223,7 +225,7 @@ else
 
     void Reset()
     {
-        selId = 0; qty = 0; price = 0; basePrice = 0;
+        selId = 0; qty = 0; price = 0; basePrice = 0; selectedMaterial = null; materialUnits = new(); selectedUnit = ""; materialSearch = "";
         entryDate = DateTime.Today; expiryDate = DateTime.Today.AddMonths(6); notes = "";
     }
 
