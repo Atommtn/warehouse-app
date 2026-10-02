@@ -11,9 +11,12 @@ public class SmsOptions
 {
     public string Url { get; set; } = "https://panel.asanak.com/webservice/v2rest/sendsms";
     public string StatusUrl { get; set; } = "https://panel.asanak.com/webservice/v2rest/msgstatus";
-    public string Username { get; set; } = "";
-    public string Password { get; set; } = "";
-    public string Source { get; set; } = "";
+    // Trimmed: a .env saved on Windows leaves "\r" (or a stray space/quote) at the end, which the panel rejects as a wrong password.
+    private string _username = "", _password = "", _source = "";
+    public string Username { get => _username; set => _username = Clean(value); }
+    public string Password { get => _password; set => _password = Clean(value); }
+    public string Source { get => _source; set => _source = Clean(value); }
+    private static string Clean(string? v) => (v ?? "").Trim().Trim('"', '\'').Trim();
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Username) && !string.IsNullOrWhiteSpace(Password) && !string.IsNullOrWhiteSpace(Source);
 }
 
@@ -123,6 +126,7 @@ public class SmsService
                 var body = await response.Content.ReadAsStringAsync();
                 log.Response = $"{(int)response.StatusCode} {Truncate(body, 900)}";
                 log.Success = response.IsSuccessStatusCode && !LooksLikeError(body);
+                if (body.Contains("\"status\":1008")) log.Response = "نام کاربری یا رمز وب‌سرویس آسانک اشتباه است (SMS_USERNAME / API_CODE در .env) — " + log.Response;
                 log.MessageId = FindMessageId(body) ?? "";
             }
             catch (Exception ex) { log.Response = Truncate(ex.Message, 900); _log.LogWarning(ex, "SMS to {To} failed", to); }
