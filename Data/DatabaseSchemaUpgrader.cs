@@ -120,6 +120,19 @@ BEGIN
  ALTER TABLE [StockWithdrawals] ADD [EnteredUnitName] nvarchar(100) NOT NULL CONSTRAINT [DF_StockWithdrawals_EnteredUnitName] DEFAULT N'';
  ALTER TABLE [StockWithdrawals] ADD [ConversionFactor] decimal(18,6) NOT NULL CONSTRAINT [DF_StockWithdrawals_ConversionFactor] DEFAULT 1;
 END;
+IF OBJECT_ID(N'[MaterialUnitConversions]',N'U') IS NOT NULL AND COL_LENGTH('MaterialUnitConversions','DefinedRefUnit') IS NULL
+BEGIN
+ ALTER TABLE [MaterialUnitConversions] ADD [DefinedRefUnit] nvarchar(100) NOT NULL CONSTRAINT [DF_MaterialUnitConversions_DefinedRefUnit] DEFAULT N'';
+ ALTER TABLE [MaterialUnitConversions] ADD [DefinedCount] decimal(24,6) NOT NULL CONSTRAINT [DF_MaterialUnitConversions_DefinedCount] DEFAULT 1;
+ ALTER TABLE [MaterialUnitConversions] ADD [DefinedAmount] decimal(24,6) NOT NULL CONSTRAINT [DF_MaterialUnitConversions_DefinedAmount] DEFAULT 0;
+END;
+-- Databases created by EF have these columns without defaults; the raw INSERTs below rely on them.
+IF COL_LENGTH('MaterialUnitConversions','DefinedRefUnit') IS NOT NULL AND NOT EXISTS(SELECT 1 FROM sys.default_constraints WHERE [name]=N'DF_MaterialUnitConversions_DefinedRefUnit')
+BEGIN
+ ALTER TABLE [MaterialUnitConversions] ADD CONSTRAINT [DF_MaterialUnitConversions_DefinedRefUnit] DEFAULT N'' FOR [DefinedRefUnit];
+ ALTER TABLE [MaterialUnitConversions] ADD CONSTRAINT [DF_MaterialUnitConversions_DefinedCount] DEFAULT 1 FOR [DefinedCount];
+ ALTER TABLE [MaterialUnitConversions] ADD CONSTRAINT [DF_MaterialUnitConversions_DefinedAmount] DEFAULT 0 FOR [DefinedAmount];
+END;
 IF COL_LENGTH('Materials','DisplayUnitName') IS NULL ALTER TABLE [Materials] ADD [DisplayUnitName] nvarchar(100) NOT NULL CONSTRAINT [DF_Materials_DisplayUnitName] DEFAULT N'';
 IF COL_LENGTH('StockWithdrawals','Department') IS NULL ALTER TABLE [StockWithdrawals] ADD [Department] nvarchar(200) NOT NULL CONSTRAINT [DF_StockWithdrawals_Department] DEFAULT N'';
 IF COL_LENGTH('RecipeIngredients','UnitName') IS NULL ALTER TABLE [RecipeIngredients] ADD [UnitName] nvarchar(100) NOT NULL CONSTRAINT [DF_RecipeIngredients_UnitName] DEFAULT N'';

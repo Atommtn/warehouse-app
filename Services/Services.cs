@@ -84,7 +84,22 @@ public class WarehouseService
     public async Task<List<MaterialUnitConversion>> GetMaterialUnitsAsync(int materialId){await using var db=await _factory.CreateDbContextAsync();await EnsureMaterialUnitsAsync(db,materialId);return await db.MaterialUnitConversions.AsNoTracking().Where(x=>x.MaterialId==materialId&&x.IsActive).OrderByDescending(x=>x.IsLegacyStockUnit).ThenBy(x=>x.UnitName).ToListAsync();}
     public async Task ConfigureMaterialUnitsAsync(int materialId,string baseUnit,List<MaterialUnitConversion> conversions,string displayUnit="")
     {
-        if(string.IsNullOrWhiteSpace(baseUnit))throw new Exception("واحد پایه الزامی است");if(conversions.Count==0||conversions.Any(x=>string.IsNullOrWhiteSpace(x.UnitName)||x.FactorToBaseUnit<=0))throw new Exception("نام واحد و مقدار معادل مثبت برای همه ردیف‌ها الزامی است");if(conversions.Select(x=>x.UnitName.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=conversions.Count)throw new Exception("نام واحد تکراری است");if(conversions.Count(x=>x.IsLegacyStockUnit)!=1)throw new Exception("دقیقاً یک واحد باید به‌عنوان واحد ثبت سوابق قبلی مشخص شود");var baseRow=conversions.FirstOrDefault(x=>string.Equals(x.UnitName.Trim(),baseUnit.Trim(),StringComparison.OrdinalIgnoreCase));if(baseRow==null||baseRow.FactorToBaseUnit!=1)throw new Exception("واحد پایه باید در فهرست واحدها وجود داشته باشد و مقدار معادل آن ۱ باشد");
+        if(string.IsNullOrWhiteSpace(baseUnit))throw new Exception("واحد محاسبه (رسپی) را انتخاب کنید");
+        baseUnit=baseUnit.Trim();
+        conversions=conversions.Where(x=>!string.IsNullOrWhiteSpace(x.UnitName)).ToList();
+        if(conversions.Any(x=>x.FactorToBaseUnit<=0))throw new Exception("مقدار معادل همه‌ی واحدها باید بیشتر از صفر باشد");
+        if(conversions.Select(x=>x.UnitName.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=conversions.Count)throw new Exception("نام واحد تکراری است");
+        // The calculation unit is always part of the list with factor 1; add it instead of asking the user to.
+        var baseRow=conversions.FirstOrDefault(x=>string.Equals(x.UnitName.Trim(),baseUnit,StringComparison.OrdinalIgnoreCase));
+        if(baseRow==null){baseRow=new MaterialUnitConversion{UnitName=baseUnit,IsActive=true};conversions.Add(baseRow);}
+        baseRow.FactorToBaseUnit=1;baseRow.DefinedRefUnit=baseUnit;baseRow.DefinedCount=1;baseRow.DefinedAmount=1;
+        if(conversions.Count(x=>x.IsLegacyStockUnit)>1)throw new Exception("فقط یک واحد می‌تواند واحد ثبت سوابق قبلی باشد");
+        if(!conversions.Any(x=>x.IsLegacyStockUnit))
+        {
+            await using var lookup=await _factory.CreateDbContextAsync();
+            var oldLegacyName=await lookup.MaterialUnitConversions.Where(x=>x.MaterialId==materialId&&x.IsLegacyStockUnit).Select(x=>x.UnitName).FirstOrDefaultAsync();
+            (conversions.FirstOrDefault(x=>string.Equals(x.UnitName.Trim(),oldLegacyName,StringComparison.OrdinalIgnoreCase))??baseRow).IsLegacyStockUnit=true;
+        }
         await using var db=await _factory.CreateDbContextAsync();await using var tx=await db.Database.BeginTransactionAsync();var m=await db.Materials.FindAsync(materialId)??throw new Exception("ماده یافت نشد");var oldLegacy=await db.MaterialUnitConversions.Where(x=>x.MaterialId==materialId&&x.IsLegacyStockUnit).Select(x=>x.FactorToBaseUnit).FirstOrDefaultAsync();if(oldLegacy<=0)oldLegacy=m.BaseQuantity>0?m.BaseQuantity:1;var newLegacy=conversions.Single(x=>x.IsLegacyStockUnit).FactorToBaseUnit;var ratio=newLegacy/oldLegacy;
         var old=await db.MaterialUnitConversions.Where(x=>x.MaterialId==materialId).ToListAsync();db.MaterialUnitConversions.RemoveRange(old);foreach(var c in conversions){c.Id=0;c.Material=null;c.MaterialId=materialId;c.UnitName=c.UnitName.Trim();db.MaterialUnitConversions.Add(c);}m.BaseUnitName=baseUnit.Trim();m.DisplayUnitName=conversions.Any(x=>string.Equals(x.UnitName.Trim(),displayUnit?.Trim(),StringComparison.OrdinalIgnoreCase))?displayUnit!.Trim():"";m.BaseQuantity=newLegacy;m.CurrentStock*=ratio;m.MinStockLevel*=ratio;
         var stocks=await db.WarehouseStocks.Where(x=>x.MaterialId==materialId).ToListAsync();foreach(var s in stocks){s.Quantity*=ratio;s.MinStockLevel*=ratio;}

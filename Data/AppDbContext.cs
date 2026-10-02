@@ -64,6 +64,8 @@ public class AppDbContext : DbContext
         m.Entity<MaterialUnitConversion>().HasOne(x=>x.Material).WithMany().HasForeignKey(x=>x.MaterialId).OnDelete(DeleteBehavior.Cascade);
         m.Entity<MaterialUnitConversion>().HasIndex(x=>new{x.MaterialId,x.UnitName}).IsUnique();
         m.Entity<MaterialUnitConversion>().Property(x=>x.FactorToBaseUnit).HasColumnType("decimal(18,6)");
+        m.Entity<MaterialUnitConversion>().Property(x=>x.DefinedCount).HasColumnType("decimal(24,6)");
+        m.Entity<MaterialUnitConversion>().Property(x=>x.DefinedAmount).HasColumnType("decimal(24,6)");
         m.Entity<StockEntry>().Property(x=>x.EnteredQuantity).HasColumnType("decimal(18,3)");
         m.Entity<StockEntry>().Property(x=>x.ConversionFactor).HasColumnType("decimal(18,6)");
         m.Entity<StockWithdrawal>().Property(x=>x.EnteredQuantity).HasColumnType("decimal(18,3)");

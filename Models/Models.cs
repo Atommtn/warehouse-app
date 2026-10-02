@@ -224,6 +224,10 @@ public class MaterialUnitConversion
     public string UnitName { get; set; } = "";
     public decimal FactorToBaseUnit { get; set; } = 1;
     public bool IsLegacyStockUnit { get; set; }
+    // How the user wrote the definition, e.g. "1 کارتن = 6 شانه" -> DefinedCount 1, DefinedAmount 6, DefinedRefUnit شانه.
+    public string DefinedRefUnit { get; set; } = "";
+    public decimal DefinedCount { get; set; } = 1;
+    public decimal DefinedAmount { get; set; }
     public bool IsActive { get; set; } = true;
 }
 
