@@ -23,12 +23,14 @@
                 <div class="form-group"><label>شماره‌های گیرنده</label><input class="form-input" @bind="recipientsText" placeholder="09121234567, 09351234567" /><small class="form-hint">با ویرگول جدا کنید</small></div>
                 <div class="form-group"><label>خلاصه‌ی روزانه</label><label class="permission-item"><input type="checkbox" @bind="smsSettings.DailyEnabled" /><span>هر روز ساعت</span></label><select class="form-input" @bind="smsSettings.DailyHour">@for (var h = 0; h < 24; h++) {<option value="@h">@h:00</option>}</select></div>
                 <div class="form-group"><label>پیامک فوری</label><label class="permission-item"><input type="checkbox" @bind="smsSettings.InstantEnabled" /><span>وقتی موجودی کالایی به حد هشدار رسید</span></label></div>
-                <div class="form-group"><label>پیشوند پیامک</label><input class="form-input" @bind="smsSettings.Prefix" maxlength="10" /></div>
+                <div class="form-group" style="grid-column:1/-1"><label>متن پیامک</label><textarea class="form-input" rows="2" @bind="smsSettings.Text"></textarea><small class="form-hint">همین متن برای خلاصه‌ی روزانه و پیامک فوری فرستاده می‌شود</small></div>
+                <div class="form-group"><label>خلاصه‌ی کدی</label><label class="permission-item"><input type="checkbox" @bind="smsSettings.IncludeCodes" /><span>کد کالاها هم زیر متن بیاید</span></label></div>
+                <div class="form-group"><label>پیشوند کدها</label><input class="form-input" @bind="smsSettings.Prefix" maxlength="10" disabled="@(!smsSettings.IncludeCodes)" /></div>
             </div>
             <div class="info-banner">
                 راهنمای کدها: <strong>L</strong> موجودی کم، <strong>E</strong> در آستانه‌ی انقضا (۷ روز)، <strong>X</strong> منقضی‌شده؛ عدد بعد از حرف تعداد کالاهاست و بعد کد کالاها.
                 در پیامک فوری <code>01014=0.5/2</code> یعنی موجودی ۰٫۵ و حد هشدار ۲ (به واحد موجودی).<br/>
-                پیش‌نمایش خلاصه‌ی امروز: <code style="white-space:pre-wrap;direction:ltr;display:inline-block;vertical-align:top">@preview</code>
+                پیش‌نمایش پیامک امروز: <code style="white-space:pre-wrap;display:inline-block;vertical-align:top">@smsSettings.Compose(preview)</code>
             </div>
             @if (!string.IsNullOrEmpty(smsMessage)) { <div class="alert @(smsOk ? "alert-success" : "alert-error")">@smsMessage</div> }
             <div class="form-actions">
@@ -135,8 +137,8 @@
         catch (Exception ex) { smsOk = false; smsMessage = ex.Message; }
         finally { smsBusy = false; }
     }
-    async Task SendTest() => await Send($"{smsSettings!.Prefix} TEST OK", "test");
-    async Task SendSummaryNow() => await Send(preview, "daily-manual");
+    async Task SendTest() => await Send(smsSettings!.Text, "test");
+    async Task SendSummaryNow() => await Send(smsSettings!.Compose(preview), "daily-manual");
     async Task Send(string text, string kind)
     {
         smsBusy = true; smsMessage = "";

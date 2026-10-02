@@ -29,6 +29,13 @@ public class SmsSettings
     public bool InstantEnabled { get; set; } = true;
     public string Prefix { get; set; } = "WH";
     public string LastDailyDate { get; set; } = "";
+    // The SMS itself: a neutral text that says nothing about the stock.
+    public string Text { get; set; } = DefaultText;
+    // Append the coded summary (L/E/X + material codes) after the text.
+    public bool IncludeCodes { get; set; }
+    public const string DefaultText = "هشدار انبار\nلطفاً نرم افزار را بررسی نمایید.";
+
+    public string Compose(string? codes) => IncludeCodes && !string.IsNullOrWhiteSpace(codes) ? $"{Text}\n{codes}" : Text;
 }
 
 /// <summary>Materials whose stock just dropped to their minimum; the background sender turns them into SMS.</summary>
@@ -66,6 +73,8 @@ public class SmsService
         if (bool.TryParse(V("instant.enabled"), out var ie)) s.InstantEnabled = ie;
         if (V("prefix") is { Length: > 0 } p) s.Prefix = p;
         s.LastDailyDate = V("daily.last") ?? "";
+        if (V("text") is { Length: > 0 } t) s.Text = t;
+        if (bool.TryParse(V("codes"), out var ic)) s.IncludeCodes = ic;
         return s;
     }
 
@@ -77,6 +86,7 @@ public class SmsService
         {
             ["recipients"] = string.Join(",", numbers), ["daily.enabled"] = s.DailyEnabled.ToString(), ["daily.hour"] = s.DailyHour.ToString(),
             ["instant.enabled"] = s.InstantEnabled.ToString(), ["prefix"] = string.IsNullOrWhiteSpace(s.Prefix) ? "WH" : s.Prefix.Trim(),
+            ["text"] = string.IsNullOrWhiteSpace(s.Text) ? SmsSettings.DefaultText : s.Text.Trim(), ["codes"] = s.IncludeCodes.ToString(),
         });
     }
 
@@ -287,7 +297,7 @@ public class SmsAlertWorker : BackgroundService
         await sms.SetAsync(new() { ["daily.last"] = today });
         var alerts = await scope.ServiceProvider.GetRequiredService<WarehouseService>().GetAlertsAsync();
         if (alerts.Count == 0) return;
-        await sms.SendAsync(settings.Recipients, SmsText.Daily(settings.Prefix, alerts, now), "daily");
+        await sms.SendAsync(settings.Recipients, settings.Compose(SmsText.Daily(settings.Prefix, alerts, now)), "daily");
     }
 
     private async Task InstantLoop(CancellationToken stop)
@@ -307,7 +317,7 @@ public class SmsAlertWorker : BackgroundService
                     await using (db)
                     {
                         var m = await db.Materials.FindAsync(materialId);
-                        if (m != null && WarehouseService.IsLowStock(m)) await sms.SendAsync(settings.Recipients, SmsText.Low(settings.Prefix, m), "low-stock");
+                        if (m != null && WarehouseService.IsLowStock(m)) await sms.SendAsync(settings.Recipients, settings.Compose(SmsText.Low(settings.Prefix, m)), "low-stock");
                     }
                 }
                 catch (Exception ex) { _log.LogWarning(ex, "Instant SMS failed"); }
