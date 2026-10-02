@@ -31,7 +31,7 @@ else
                         <td><code>@m.Code</code></td>
                         <td><strong>@m.Name</strong></td>
                         <td>@(m.Group?.Name ?? "-")</td>
-                        <td>@(m.Unit?.Name ?? "-")</td>
+                        <td>@(string.IsNullOrEmpty(m.StockUnitName) ? "-" : m.StockUnitName)</td>
                         <td>@m.CurrentStock.ToString("N2")</td>
                         <td>@(m.Supplier?.Name ?? "-")</td>
                         <td><button class="btn btn-success btn-sm" @onclick="() => Restore(m.Id)">♻️ بازیابی</button></td>

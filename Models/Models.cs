@@ -52,9 +52,12 @@ public class Material
     public string Name { get; set; } = "";
     public int? GroupId { get; set; }
     public MaterialGroup? Group { get; set; }
+    // Legacy stock-unit link, kept in sync with StockUnitName so old screens and upgrades keep working.
     public int? UnitId { get; set; }
     public Unit? Unit { get; set; }
+    // Last purchase price of one StockUnitName.
     public decimal PricePerUnit { get; set; }
+    // Stock quantities are counted in StockUnitName (e.g. کارتن).
     public decimal MinStockLevel { get; set; }
     public decimal CurrentStock { get; set; }
     public int? SupplierId { get; set; }
@@ -62,10 +65,13 @@ public class Material
     public string Notes { get; set; } = "";
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    // ── تبدیل واحد ──
-    // مثال: ۱ گونی = ۴۰ کیلوگرم → BaseQuantity=40, BaseUnitName="کیلوگرم"
+    // ── واحدها ──
+    // واحد موجودی: همه‌ی مقدارهای انبار با این واحد ذخیره می‌شوند (مثلاً کارتن).
+    public string StockUnitName { get; set; } = "";
+    // واحد رسپی: فقط مبنای قیمت و هزینه‌ی رسپی است (مثلاً کیلوگرم). Stored in the old BaseUnitName column.
+    public string RecipeUnitName { get; set; } = "کیلوگرم";
+    // Legacy columns from the old "base unit" model; only read by the database upgrade.
     public decimal BaseQuantity { get; set; } = 1;
-    public string BaseUnitName { get; set; } = "کیلوگرم";
     public string DisplayUnitName { get; set; } = "";
     public bool UnitsNormalized { get; set; }
     public List<StockEntry> Entries { get; set; } = new();
@@ -77,8 +83,11 @@ public class StockEntry
     public int Id { get; set; }
     public int MaterialId { get; set; }
     public Material? Material { get; set; }
+    // Quantity in the material's stock unit.
     public decimal Quantity { get; set; }
+    // Price of one stock unit (TotalPrice / Quantity).
     public decimal PricePerUnit { get; set; }
+    public decimal TotalPrice { get; set; }
     public DateTime EntryDate { get; set; }
     public DateTime ExpiryDate { get; set; }
     public string Notes { get; set; } = "";
@@ -90,9 +99,11 @@ public class StockEntry
     public bool PriceConfirmed { get; set; }
     public string PriceConfirmedBy { get; set; } = "";
     public DateTime? PriceConfirmedAt { get; set; }
+    // What the user typed, e.g. 3 کارتن; ConversionFactor = stock units in one entered unit.
     public decimal EnteredQuantity { get; set; }
     public string EnteredUnitName { get; set; } = "";
     public decimal ConversionFactor { get; set; } = 1;
+    public decimal PricePerStockUnit => Quantity > 0 && TotalPrice > 0 ? TotalPrice / Quantity : PricePerUnit;
 }
 
 public class StockWithdrawal
@@ -100,6 +111,7 @@ public class StockWithdrawal
     public int Id { get; set; }
     public int MaterialId { get; set; }
     public Material? Material { get; set; }
+    // Quantity in the material's stock unit.
     public decimal Quantity { get; set; }
     public DateTime WithdrawalDate { get; set; }
     public string Reason { get; set; } = "";
@@ -211,7 +223,7 @@ public class RecipeIngredient
     public Recipe? Recipe { get; set; }
     public int MaterialId { get; set; }
     public Material? Material { get; set; }
-    public decimal Quantity { get; set; }   // مقدار بر اساس BaseUnitName ماده
+    public decimal Quantity { get; set; }   // مقدار بر حسب UnitName
     public bool IsTopping { get; set; }
     public string UnitName { get; set; } = "";
 }
@@ -222,13 +234,18 @@ public class MaterialUnitConversion
     public int MaterialId { get; set; }
     public Material? Material { get; set; }
     public string UnitName { get; set; } = "";
-    public decimal FactorToBaseUnit { get; set; } = 1;
-    public bool IsLegacyStockUnit { get; set; }
-    // How the user wrote the definition, e.g. "1 کارتن = 6 شانه" -> DefinedCount 1, DefinedAmount 6, DefinedRefUnit شانه.
+    // How many of this unit make one stock unit: کارتن 1، شانه 6، عدد 180، کیلوگرم 12.6.
+    public decimal PerStockUnit { get; set; } = 1;
+    // The relation is an estimate (e.g. the weight of an egg); it only affects prices, never stock.
+    public bool IsApproximate { get; set; }
+    // How the user wrote the definition: "DefinedCount UnitName = DefinedAmount DefinedRefUnit", e.g. 1 کارتن = 6 شانه.
     public string DefinedRefUnit { get; set; } = "";
     public decimal DefinedCount { get; set; } = 1;
     public decimal DefinedAmount { get; set; }
     public bool IsActive { get; set; } = true;
+    // Legacy columns of the old base-unit model.
+    public decimal FactorToBaseUnit { get; set; } = 1;
+    public bool IsLegacyStockUnit { get; set; }
 }
 
 public class Asset

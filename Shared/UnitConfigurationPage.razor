@@ -1,197 +1,173 @@
 @using WarehouseApp.Models
 @using WarehouseApp.Services
 @inject WarehouseService Service
+@inject AuthService Auth
 
-<div class="page-header"><h2>⚖️ تعریف واحدهای کالا و اصلاح سوابق</h2></div>
+<div class="page-header"><h2>⚖️ واحدهای کالا</h2></div>
 <div class="info-banner">
-    ۱) <strong>واحد موجودی</strong>: موجودی انبار با این واحد نمایش داده می‌شود (مثلاً کارتن).<br/>
-    ۲) <strong>واحد رسپی و محاسبه</strong>: قیمت هر واحد و هزینه‌ی رسپی با این واحد حساب می‌شود (مثلاً کیلوگرم).<br/>
-    ۳) هر واحد را بر حسب هر واحد دیگری بنویسید؛ گرم و کیلوگرم (و لیتر و میلی‌لیتر) خودشان به هم تبدیل می‌شوند.<br/>
-    مثال تخم‌مرغ: <strong>۱ کارتن = ۶ شانه</strong>، <strong>۱ شانه = ۳۰ عدد</strong>، <strong>۱ عدد = ۷۰ گرم</strong>. با خرید ۳ کارتن به مبلغ کل ۹۲٬۲۵۰٬۰۰۰ ریال، قیمت هر عدد، هر گرم و هر کیلو خودکار حساب می‌شود.
+    <strong>واحد موجودی</strong> واحدی است که انبار با آن شمرده می‌شود (مثلاً کارتن). همه‌ی موجودی‌ها و سوابق با همین واحد نگه داشته می‌شوند.<br/>
+    <strong>واحد رسپی</strong> فقط مبنای قیمت و هزینه‌ی رسپی است (مثلاً کیلوگرم) و روی موجودی اثری ندارد.<br/>
+    بقیه‌ی واحدها را بر حسب هر واحد دیگری بنویسید؛ گرم و کیلوگرم (و لیتر و میلی‌لیتر) خودشان به هم تبدیل می‌شوند.
+    رابطه‌هایی که دقیق نیستند (مثل وزن هر تخم‌مرغ) را <span class="approx">تقریبی</span> بزنید؛ تغییر آن‌ها فقط قیمت رسپی را عوض می‌کند، نه موجودی را.<br/>
+    مثال تخم‌مرغ: ۱ کارتن = ۶ شانه، ۱ شانه = ۳۰ عدد، ۱ عدد ≈ ۷۰ گرم؛ واحد موجودی «کارتن» و واحد رسپی «کیلوگرم».
 </div>
 
 <div class="form-card">
     <div class="form-grid">
-        <div class="form-group"><label>جستجوی ماده</label><input class="form-input" @bind="search" @bind:event="oninput" placeholder="نام یا کد..."/></div>
-        <div class="form-group"><label>ماده</label><select class="form-input" value="@materialId" @onchange="SelectMaterial"><option value="0">انتخاب کنید...</option>@foreach(var m in FilteredMaterials){<option value="@m.Id">[@m.Code] @m.Name</option>}</select></div>
-        @if(materialId>0)
+        <div class="form-group"><label>کالا</label><MaterialPicker Materials="materials" SelectedId="materialId" SelectedIdChanged="SelectMaterial" Detail="@(m => m.StockUnitName)" /></div>
+        @if (material != null)
         {
-            <div class="form-group"><label>واحد موجودی</label><select class="form-input" value="@StockUnitValue" @onchange="StockUnitChanged">@foreach(var u in UnitChoices){<option value="@u">@u</option>}</select><small class="form-hint">موجودی انبار با این واحد نمایش داده می‌شود</small></div>
-            <div class="form-group"><label>واحد رسپی و محاسبه</label><select class="form-input" value="@baseUnit" @onchange="BaseUnitChanged"><option value="">انتخاب کنید...</option>@foreach(var u in UnitChoices){<option value="@u">@u</option>}</select><small class="form-hint">مبنای قیمت هر واحد و هزینه‌ی رسپی</small></div>
+            <div class="form-group"><label>واحد موجودی</label><select class="form-input" value="@stockUnit" @onchange="StockUnitChanged">@foreach (var u in UnitChoices) {<option value="@u">@u</option>}</select><small class="form-hint">انبار با این واحد شمرده می‌شود</small></div>
+            <div class="form-group"><label>واحد رسپی</label><select class="form-input" @bind="recipeUnit" @bind:after="Preview">@foreach (var u in UnitChoices) {<option value="@u">@u</option>}</select><small class="form-hint">مبنای قیمت و هزینه‌ی رسپی</small></div>
         }
     </div>
 </div>
 
-@if(materialId>0)
+@if (material != null)
 {
     <div class="form-card">
-        <div class="unit-config-header"><h3>واحدهای @SelectedMaterialName</h3><span class="text-muted">واحد جدید را از بخش «تعاریف اولیه ← تعریف واحد» بسازید.</span></div>
-        <div class="unit-conversion-list">
-            @foreach(var row in rows)
-            {
-                var link=Link(row);
-                <div class="unit-conversion-card">
-                    <div class="form-group"><label>نام واحد</label><select class="form-input" value="@row.UnitName" @onchange="e=>RenameRow(row,e)"><option value="">انتخاب کنید...</option>@foreach(var u in UnitChoices){<option value="@u">@u</option>}</select></div>
-                    @if(IsBase(row))
-                    {
-                        <div class="conversion-sentence"><strong>واحد رسپی و محاسبه</strong><span class="text-muted">بقیه‌ی واحدها به این واحد تبدیل می‌شوند</span></div>
-                    }
-                    else
-                    {
-                        <div class="conversion-sentence">
-                            <input class="form-input conversion-count" type="number" step="0.001" min="0.001" value="@N(link.Count)" @onchange="e=>SetCount(row,e)"/>
-                            <strong>@(string.IsNullOrWhiteSpace(row.UnitName)?"…":row.UnitName)</strong><span>برابر است با</span>
-                            <input class="form-input" type="number" step="0.000001" min="0.000001" value="@N(link.Amount)" @onchange="e=>SetAmount(row,e)"/>
-                            <select class="form-input conversion-ref" value="@link.RefUnit" @onchange="e=>SetRef(row,e)">@foreach(var u in RefChoices(row)){<option value="@u">@u</option>}</select>
-                            @if(!string.IsNullOrWhiteSpace(row.UnitName)){<small class="form-hint">یعنی هر ۱ @row.UnitName = @row.FactorToBaseUnit.ToString("0.######") @baseUnit</small>}
-                        </div>
-                    }
-                    <label class="legacy-unit-choice" title="اگر موجودی و ورود و خروج‌های قبلی این کالا با این واحد ثبت شده‌اند، این گزینه را بزنید"><input type="radio" name="legacy" checked="@row.IsLegacyStockUnit" @onchange="()=>SetLegacy(row)"/><span>سوابق قبلی با این واحد ثبت شده</span></label>
-                    @if(!IsBase(row)){<button class="btn btn-danger btn-sm" @onclick="()=>RemoveRow(row)">حذف واحد</button>}
-                </div>
-            }
-        </div>
-        <button class="btn btn-secondary btn-sm" @onclick="AddRow">+ افزودن واحد دیگر</button>
-        @if(PreviewLines.Any())
+        <h3>رابطه‌ی واحدهای @material.Name</h3>
+        @foreach (var row in rows)
         {
-            <div class="unit-preview">@foreach(var line in PreviewLines){<span class="status-badge ok">@line</span>}</div>
+            <div class="unit-row">
+                <input class="form-input num" type="number" step="any" min="0" value="@N(row.Count)" @onchange="e => { row.Count = D(e); Preview(); }" />
+                <select class="form-input" value="@row.Unit" @onchange="e => Rename(row, e)"><option value="">واحد...</option>@foreach (var u in UnitChoices.Where(x => !UnitSet.Same(x, stockUnit))) {<option value="@u">@u</option>}</select>
+                <span>=</span>
+                <input class="form-input num" type="number" step="any" min="0" value="@N(row.Amount)" @onchange="e => { row.Amount = D(e); Preview(); }" />
+                <select class="form-input" value="@row.Ref" @onchange="e => { row.Ref = e.Value?.ToString() ?? stockUnit; Preview(); }">@foreach (var u in RefChoices(row)) {<option value="@u">@u</option>}</select>
+                <label class="permission-item"><input type="checkbox" checked="@row.Approximate" @onchange="e => { row.Approximate = e.Value is true; Preview(); }" /><span>تقریبی</span></label>
+                <button class="btn-icon" title="حذف" @onclick="() => { rows.Remove(row); Preview(); }">🗑️</button>
+                @if (perStock.TryGetValue(row.Unit, out var p)) { <span class="result">هر ۱ @stockUnit = @(p.Approx ? "≈ " : "")@N(p.Per) @row.Unit</span> }
+            </div>
         }
-        <label class="permission-item unit-confirm"><input type="checkbox" @bind="confirmed"/><span>تأیید می‌کنم اطلاعات بالا صحیح است و سوابق قبلی این ماده بر همین اساس محاسبه مجدد شود.</span></label>
-        <button class="btn btn-primary" disabled="@(!confirmed)" @onclick="Save">ذخیره و محاسبه مجدد موجودی و سوابق</button>
-        @if(!string.IsNullOrEmpty(message)){<div class="alert @(success?"alert-success":"alert-error")">@message</div>}
+        <button class="btn btn-secondary btn-sm" @onclick="AddRow">+ افزودن واحد</button>
+        <small class="text-muted"> واحد جدید را از «تعاریف اولیه ← تعریف واحد» بسازید.</small>
+
+        @if (!string.IsNullOrEmpty(previewError)) { <div class="alert alert-error">@previewError</div> }
+        else
+        {
+            <div class="table-responsive"><table class="data-table unit-table">
+                <thead><tr><th>واحد</th><th>در هر ۱ @stockUnit</th>@if (Auth.CanViewPrice && material.PricePerUnit > 0) {<th>قیمت هر واحد (آخرین خرید)</th>}<th></th></tr></thead>
+                <tbody>
+                    @foreach (var (name, p) in perStock.OrderBy(x => x.Value.Per))
+                    {
+                        <tr>
+                            <td><strong>@name</strong>@if (UnitSet.Same(name, stockUnit)) {<span class="status-badge ok">موجودی</span>} @if (UnitSet.Same(name, recipeUnit)) {<span class="status-badge warning">رسپی</span>}</td>
+                            <td>@(p.Approx ? "≈ " : "")@N(p.Per)</td>
+                            @if (Auth.CanViewPrice && material.PricePerUnit > 0) {<td>@(p.Approx ? "≈ " : "")@UnitSet.N(PricePerStock / p.Per, 0) ریال</td>}
+                            <td>@if (p.Approx) {<span class="approx">تقریبی</span>}</td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            @if (StockUnitChanging && conversion is decimal k)
+            {
+                <div class="alert alert-error">واحد موجودی از «@material.StockUnitName» به «@stockUnit» تغییر می‌کند: موجودی فعلی @UnitSet.N(material.CurrentStock) @material.StockUnitName به @UnitSet.N(material.CurrentStock / k) @stockUnit تبدیل می‌شود و همه‌ی سوابق هم با همین نسبت نوشته می‌شوند.</div>
+            }
+        }
+        @if (!string.IsNullOrEmpty(message)) { <div class="alert @(success ? "alert-success" : "alert-error")">@message</div> }
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@(busy || !string.IsNullOrEmpty(previewError))" @onclick="Save">💾 ذخیره واحدها</button>
+            <button class="btn btn-secondary" @onclick="() => SelectMaterial(materialId)">بازگردانی</button>
+        </div>
     </div>
 }
 
 @code {
-    List<Material> materials=new(); List<Unit> availableUnits=new(); List<MaterialUnitConversion> rows=new();
-    string search="",baseUnit="",displayUnit="",message=""; int materialId; bool confirmed,success;
-    IEnumerable<Material> FilteredMaterials=>string.IsNullOrWhiteSpace(search)?materials:materials.Where(x=>x.Name.Contains(search,StringComparison.OrdinalIgnoreCase)||x.Code.Contains(search,StringComparison.OrdinalIgnoreCase));
-    string SelectedMaterialName=>materials.FirstOrDefault(x=>x.Id==materialId)?.Name??"کالا";
-    string StockUnitValue=>string.IsNullOrWhiteSpace(displayUnit)?baseUnit:displayUnit;
-    static string N(decimal v)=>v.ToString("0.######",System.Globalization.CultureInfo.InvariantCulture);
-    static bool Same(string? a,string? b)=>string.Equals(a?.Trim(),b?.Trim(),StringComparison.OrdinalIgnoreCase);
-    bool IsBase(MaterialUnitConversion r)=>Same(r.UnitName,baseUnit);
+    class Row { public string Unit = ""; public decimal Count = 1; public decimal Amount = 1; public string Ref = ""; public bool Approximate; }
 
-    // Units every material understands without a definition.
-    static readonly Dictionary<string,(string Family,decimal Factor)> Standard=new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["تن"]=("mass",1000000m),["کیلوگرم"]=("mass",1000m),["کیلو"]=("mass",1000m),["گرم"]=("mass",1m),["میلی‌گرم"]=("mass",0.001m),
-        ["لیتر"]=("volume",1000m),["میلی‌لیتر"]=("volume",1m),["سی‌سی"]=("volume",1m)
-    };
-    static decimal? StandardFactor(string from,string to)=>Standard.TryGetValue(from,out var f)&&Standard.TryGetValue(to,out var t)&&f.Family==t.Family?f.Factor/t.Factor:null;
+    List<Material> materials = new(); List<Unit> availableUnits = new(); List<Row> rows = new();
+    Material? material; int materialId; string stockUnit = "", recipeUnit = "", message = "", previewError = ""; bool success, busy;
+    Dictionary<string, (decimal Per, bool Approx)> perStock = new(StringComparer.OrdinalIgnoreCase);
+    decimal? conversion; // old stock units in one new stock unit
+    decimal PricePerStock => material == null ? 0 : conversion is decimal k && StockUnitChanging ? material.PricePerUnit * k : material.PricePerUnit;
+    bool StockUnitChanging => material != null && !UnitSet.Same(material.StockUnitName, stockUnit);
 
-    IEnumerable<string> UnitChoices=>availableUnits.Select(x=>x.Name).Concat(rows.Select(x=>x.UnitName)).Concat(new[]{baseUnit,displayUnit}).Where(x=>!string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase);
-    IEnumerable<string> RefChoices(MaterialUnitConversion row)
-    {
-        var list=new List<string>{baseUnit};
-        list.AddRange(rows.Where(x=>!ReferenceEquals(x,row)&&!string.IsNullOrWhiteSpace(x.UnitName)).Select(x=>x.UnitName));
-        list.AddRange(Standard.Keys.Where(k=>StandardFactor(k,baseUnit).HasValue&&(availableUnits.Any(u=>Same(u.Name,k))||k is "گرم" or "کیلوگرم" or "لیتر" or "میلی‌لیتر")));
-        var current=Link(row).RefUnit; if(!string.IsNullOrWhiteSpace(current)) list.Add(current);
-        return list.Where(x=>!string.IsNullOrWhiteSpace(x)&&!Same(x,row.UnitName)).Distinct(StringComparer.OrdinalIgnoreCase);
-    }
-    IEnumerable<string> PreviewLines=>rows.Where(r=>!string.IsNullOrWhiteSpace(r.UnitName)&&!IsBase(r)).Select(r=>$"۱ {r.UnitName} = {r.FactorToBaseUnit:0.######} {baseUnit}");
+    static string N(decimal v) => v.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+    static decimal D(ChangeEventArgs e) => decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var v) && v > 0 ? v : 0;
 
-    protected override async Task OnInitializedAsync(){materials=await Service.GetMaterialsAsync();availableUnits=await Service.GetUnitsAsync();}
-    async Task SelectMaterial(ChangeEventArgs e)
+    IEnumerable<string> UnitChoices => availableUnits.Select(x => x.Name).Concat(new[] { "کیلوگرم", "گرم", "لیتر", "میلی‌لیتر", "عدد" })
+        .Concat(rows.Select(x => x.Unit)).Append(stockUnit).Append(recipeUnit).Append(material?.StockUnitName ?? "")
+        .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase);
+    IEnumerable<string> RefChoices(Row row) => new[] { stockUnit }.Concat(rows.Where(x => x != row).Select(x => x.Unit))
+        .Concat(UnitSet.Standard.Keys.Where(k => k is "گرم" or "کیلوگرم" or "لیتر" or "میلی‌لیتر")).Append(row.Ref)
+        .Where(x => !string.IsNullOrWhiteSpace(x) && !UnitSet.Same(x, row.Unit)).Distinct(StringComparer.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync() { materials = await Service.GetMaterialsAsync(); availableUnits = await Service.GetUnitsAsync(); }
+
+    async Task SelectMaterial(int id)
     {
-        materialId=int.TryParse(e.Value?.ToString(),out var id)?id:0;var m=materials.FirstOrDefault(x=>x.Id==materialId);
-        baseUnit=m?.BaseUnitName??"";displayUnit=m?.DisplayUnitName??"";links.Clear();
-        rows=materialId>0?await Service.GetMaterialUnitsAsync(materialId):new();
-        EnsureRow(baseUnit);Recalculate();confirmed=false;message="";
-    }
-    MaterialUnitConversion? EnsureRow(string unit)
-    {
-        if(string.IsNullOrWhiteSpace(unit)) return null;
-        var row=rows.FirstOrDefault(x=>Same(x.UnitName,unit));
-        if(row==null)
+        materialId = id; message = ""; rows.Clear();
+        material = materials.FirstOrDefault(x => x.Id == id);
+        if (material == null) return;
+        stockUnit = material.StockUnitName; recipeUnit = material.RecipeUnitName;
+        foreach (var r in await Service.GetMaterialUnitRowsAsync(id))
         {
-            row=new MaterialUnitConversion{MaterialId=materialId,UnitName=unit,FactorToBaseUnit=1};
-            var std=StandardFactor(unit,baseUnit);
-            links[row]=new UnitLink{RefUnit=baseUnit,Count=1,Amount=std??1};
-            rows.Add(row);
+            if (UnitSet.Same(r.UnitName, stockUnit)) continue;
+            rows.Add(string.IsNullOrWhiteSpace(r.DefinedRefUnit) || r.DefinedAmount <= 0 || UnitSet.Same(r.DefinedRefUnit, r.UnitName)
+                ? new Row { Unit = r.UnitName, Count = r.PerStockUnit, Amount = 1, Ref = stockUnit, Approximate = r.IsApproximate }
+                : new Row { Unit = r.UnitName, Count = r.DefinedCount, Amount = r.DefinedAmount, Ref = r.DefinedRefUnit, Approximate = r.IsApproximate });
         }
-        return row;
-    }
-    void BaseUnitChanged(ChangeEventArgs e)
-    {
-        var newBase=e.Value?.ToString()??"";if(string.IsNullOrWhiteSpace(newBase))return;
-        var oldBase=baseUnit;
-        // Keep every unit's meaning: rows defined directly on the old base are re-pointed through it.
-        var oldBaseRow=EnsureRow(oldBase);
-        baseUnit=newBase;var newBaseRow=EnsureRow(newBase)!;
-        if(oldBaseRow!=null&&!ReferenceEquals(oldBaseRow,newBaseRow))
-        {
-            var std=StandardFactor(oldBase,newBase);
-            // Old base expressed in the new base: standard (کیلوگرم→گرم) or from what the new base row meant before.
-            var oldInNew=std??(newBaseRow.FactorToBaseUnit>0?1/newBaseRow.FactorToBaseUnit:1);
-            links[oldBaseRow]=new UnitLink{RefUnit=newBase,Count=1,Amount=oldInNew};
-        }
-        Recalculate();
-    }
-    void StockUnitChanged(ChangeEventArgs e){var unit=e.Value?.ToString()??"";EnsureRow(unit);displayUnit=Same(unit,baseUnit)?"":unit;Recalculate();}
-    void AddRow(){var row=new MaterialUnitConversion{MaterialId=materialId,FactorToBaseUnit=1};links[row]=new UnitLink{RefUnit=baseUnit};rows.Add(row);confirmed=false;}
-    void RemoveRow(MaterialUnitConversion row){rows.Remove(row);links.Remove(row);if(Same(displayUnit,row.UnitName))displayUnit="";Recalculate();}
-    void RenameRow(MaterialUnitConversion row,ChangeEventArgs e)
-    {
-        var name=e.Value?.ToString()??"";
-        if(rows.Any(x=>!ReferenceEquals(x,row)&&Same(x.UnitName,name))){message=$"واحد «{name}» قبلاً اضافه شده است";success=false;return;}
-        foreach(var l in links.Values)if(Same(l.RefUnit,row.UnitName)&&!string.IsNullOrWhiteSpace(row.UnitName))l.RefUnit=name;
-        row.UnitName=name;
-        var std=StandardFactor(name,baseUnit);if(std.HasValue){var l=Link(row);l.RefUnit=baseUnit;l.Count=1;l.Amount=std.Value;}
-        Recalculate();
+        Preview();
     }
 
-    // "Count Unit = Amount RefUnit", e.g. 1 کارتن = 6 شانه or 1 عدد = 70 گرم.
-    class UnitLink{public string RefUnit="";public decimal Count=1;public decimal Amount=1;}
-    Dictionary<MaterialUnitConversion,UnitLink> links=new();
-    UnitLink Link(MaterialUnitConversion row)
+    void AddRow() { rows.Add(new Row { Ref = stockUnit, Count = 1, Amount = 0 }); Preview(); }
+    void Rename(Row row, ChangeEventArgs e)
     {
-        if(!links.TryGetValue(row,out var l))
-        {
-            l=!string.IsNullOrWhiteSpace(row.DefinedRefUnit)&&row.DefinedAmount>0
-                ?new UnitLink{RefUnit=row.DefinedRefUnit,Count=row.DefinedCount>0?row.DefinedCount:1,Amount=row.DefinedAmount}
-                :new UnitLink{RefUnit=baseUnit,Amount=row.FactorToBaseUnit>0?row.FactorToBaseUnit:1};
-            links[row]=l;
-        }
-        return l;
+        var name = e.Value?.ToString() ?? "";
+        if (rows.Any(x => x != row && UnitSet.Same(x.Unit, name))) { message = $"واحد «{name}» قبلاً اضافه شده است"; success = false; return; }
+        foreach (var r in rows.Where(r => UnitSet.Same(r.Ref, row.Unit) && row.Unit != "")) r.Ref = name;
+        row.Unit = name; Preview();
     }
-    void SetCount(MaterialUnitConversion row,ChangeEventArgs e){Link(row).Count=decimal.TryParse(e.Value?.ToString(),System.Globalization.NumberStyles.Number,System.Globalization.CultureInfo.InvariantCulture,out var v)&&v>0?v:1;Recalculate();}
-    void SetAmount(MaterialUnitConversion row,ChangeEventArgs e){Link(row).Amount=decimal.TryParse(e.Value?.ToString(),System.Globalization.NumberStyles.Number,System.Globalization.CultureInfo.InvariantCulture,out var v)?v:0;Recalculate();}
-    void SetRef(MaterialUnitConversion row,ChangeEventArgs e){var unit=e.Value?.ToString()??baseUnit;Link(row).RefUnit=unit;EnsureRow(unit);Recalculate();}
 
-    // Factor of a unit in the calculation unit, following the chain (کارتن → شانه → عدد → گرم → کیلوگرم).
-    decimal? Resolve(string unit,HashSet<string> seen)
+    // Making another unit the stock unit: its row disappears and the previous stock unit gets a row in terms of it.
+    void StockUnitChanged(ChangeEventArgs e)
     {
-        if(Same(unit,baseUnit)) return 1;
-        if(!seen.Add(unit)) return null;
-        var row=rows.FirstOrDefault(x=>Same(x.UnitName,unit));
-        if(row!=null)
+        var next = e.Value?.ToString() ?? ""; if (next == "" || UnitSet.Same(next, stockUnit)) return;
+        var old = stockUnit; var pers = perStock;
+        var nextRow = rows.FirstOrDefault(r => UnitSet.Same(r.Unit, next));
+        if (nextRow != null) rows.Remove(nextRow);
+        if (!rows.Any(r => UnitSet.Same(r.Unit, old)))
         {
-            var l=Link(row);
-            var parent=Resolve(l.RefUnit,seen);
-            if(parent.HasValue&&l.Count>0) return l.Amount/l.Count*parent.Value;
+            if (nextRow != null && UnitSet.Same(nextRow.Ref, old)) rows.Insert(0, new Row { Unit = old, Count = nextRow.Amount, Amount = nextRow.Count, Ref = next, Approximate = nextRow.Approximate });
+            else if (pers.TryGetValue(next, out var p)) rows.Insert(0, new Row { Unit = old, Count = p.Per, Amount = 1, Ref = next, Approximate = p.Approx });
+            else rows.Insert(0, new Row { Unit = old, Count = 1, Amount = 0, Ref = next });
         }
-        return StandardFactor(unit,baseUnit);
+        foreach (var r in rows.Where(r => string.IsNullOrWhiteSpace(r.Ref))) r.Ref = next;
+        stockUnit = next; Preview();
     }
-    void Recalculate()
+
+    List<MaterialUnitConversion> ToConversions() =>
+        rows.Where(r => !string.IsNullOrWhiteSpace(r.Unit))
+            .Select(r => new MaterialUnitConversion { UnitName = r.Unit, DefinedCount = r.Count, DefinedAmount = r.Amount, DefinedRefUnit = r.Ref, IsApproximate = r.Approximate, IsActive = true })
+            .Prepend(new MaterialUnitConversion { UnitName = stockUnit, IsActive = true }).ToList();
+
+    void Preview()
     {
-        foreach(var r in rows.Where(IsBase)){var l=Link(r);l.RefUnit=baseUnit;l.Count=1;l.Amount=1;}
-        foreach(var r in rows){var f=string.IsNullOrWhiteSpace(r.UnitName)?null:Resolve(r.UnitName,new HashSet<string>(StringComparer.OrdinalIgnoreCase));r.FactorToBaseUnit=f.HasValue?Math.Round(f.Value,6):0;}
-        confirmed=false;
-    }
-    void SetLegacy(MaterialUnitConversion selected){foreach(var x in rows)x.IsLegacyStockUnit=ReferenceEquals(x,selected);}
-    async Task Save()
-    {
+        previewError = ""; perStock.Clear(); conversion = null;
         try
         {
-            Recalculate();
-            var broken=rows.FirstOrDefault(x=>!string.IsNullOrWhiteSpace(x.UnitName)&&x.FactorToBaseUnit<=0);
-            if(broken!=null) throw new Exception($"رابطه‌ی واحد «{broken.UnitName}» با {baseUnit} مشخص نیست؛ آن را بر حسب یک واحد دیگر بنویسید");
-            foreach(var r in rows){var l=Link(r);r.DefinedRefUnit=l.RefUnit;r.DefinedCount=l.Count;r.DefinedAmount=l.Amount;}
-            await Service.ConfigureMaterialUnitsAsync(materialId,baseUnit,rows.Where(x=>!string.IsNullOrWhiteSpace(x.UnitName)).ToList(),displayUnit);
-            success=true;message="واحدها ذخیره شد و موجودی، ورودها، خروج‌ها، رسپی و کاردکس این ماده محاسبه مجدد شدند.";confirmed=false;
-            links.Clear();rows=await Service.GetMaterialUnitsAsync(materialId);materials=await Service.GetMaterialsAsync();Recalculate();
+            var list = ToConversions();
+            UnitSet.Resolve(stockUnit, list);
+            var set = new UnitSet(stockUnit, recipeUnit, list);
+            foreach (var u in set.Units.Where(u => !u.IsDerived || UnitSet.Same(u.Name, recipeUnit) || u.Name is "کیلوگرم" or "گرم" or "لیتر")) perStock[u.Name] = (u.PerStockUnit, u.IsApproximate);
+            if (!set.Has(recipeUnit)) previewError = $"رابطه‌ی واحد رسپی «{recipeUnit}» با {stockUnit} را مشخص کنید";
+            if (StockUnitChanging) { if (set.Has(material!.StockUnitName)) conversion = set.PerStockUnit(material.StockUnitName); else previewError = $"واحد موجودی قبلی «{material.StockUnitName}» را در لیست نگه دارید تا موجودی فعلی تبدیل شود"; }
         }
-        catch(Exception ex){success=false;message=ex.Message;}
+        catch (Exception ex) { previewError = ex.Message; }
+    }
+
+    async Task Save()
+    {
+        busy = true; message = "";
+        try
+        {
+            await Service.SaveMaterialUnitsAsync(materialId, stockUnit, recipeUnit, ToConversions());
+            materials = await Service.GetMaterialsAsync();
+            await SelectMaterial(materialId);
+            success = true; message = "✅ واحدها ذخیره شد.";
+        }
+        catch (Exception ex) { success = false; message = ex.Message; }
+        finally { busy = false; }
     }
 }

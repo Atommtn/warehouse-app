@@ -65,7 +65,7 @@
             <div class="approval-card">
                 <div class="approval-info">
                     <strong>[@w.Material?.Code] @w.Material?.Name</strong>
-                    <span>مقدار: @w.EnteredQuantity @w.EnteredUnitName (= @w.Quantity @w.Material?.BaseUnitName)</span>
+                    <span>مقدار: @UnitSet.N(w.EnteredQuantity) @w.EnteredUnitName (= @display.Format(w.Quantity, w.Material))</span>
                     <span>متصدی: @w.CreatedByUsername</span>
                     <span>دلیل: @w.Reason</span>
                     <span class="approval-date">@w.CreatedAt.ToShamsiWithTime()</span>
@@ -114,9 +114,9 @@
                 {
                     <tr class="@(m.CurrentStock<=m.MinStockLevel?"row-warning":"")">
                         <td><code>@m.Code</code></td>
-                        <td><strong>@m.Name</strong><br/><small class="text-muted">واحد موجودی: @(display.UnitOf(m.Id) ?? m.BaseUnitName)</small></td>
-                        <td>@display.Format(m.CurrentStock, m, "N2")</td>
-                        @if (Auth.CanViewPrice) { <td>@m.PricePerUnit.ToString("N0") ﷼</td> }
+                        <td><strong>@m.Name</strong><br/><small class="text-muted">واحد موجودی: @m.StockUnitName</small></td>
+                        <td>@display.Format(m.CurrentStock, m)</td>
+                        @if (Auth.CanViewPrice) { <td>@m.PricePerUnit.ToString("N0") ﷼ <small class="text-muted">/ @m.StockUnitName</small></td> }
                         <td>
                             @if (m.CurrentStock<=m.MinStockLevel)          { <span class="status-badge danger">خرید</span> }
                             else if (m.CurrentStock<=m.MinStockLevel*1.5m) { <span class="status-badge warning">کم</span> }
@@ -164,11 +164,11 @@
         var (mats,entries,withdrawals,als) = await Warehouse.GetExportDataAsync();
         var csv = new System.Text.StringBuilder();
         csv.AppendLine("=== مواد اولیه ===");
-        csv.AppendLine("کد,نام,واحد,موجودی,حد هشدار,قیمت,تأمین‌کننده");
-        foreach (var m in mats) csv.AppendLine($"{m.Code},{m.Name},{m.BaseUnitName},{m.CurrentStock},{m.MinStockLevel},{m.PricePerUnit},{m.Supplier?.Name}");
+        csv.AppendLine("کد,نام,واحد موجودی,موجودی,حد هشدار,قیمت هر واحد موجودی,تأمین‌کننده");
+        foreach (var m in mats) csv.AppendLine($"{m.Code},{m.Name},{m.StockUnitName},{m.CurrentStock},{m.MinStockLevel},{m.PricePerUnit},{m.Supplier?.Name}");
         csv.AppendLine("\n=== ورودی‌ها ===");
-        csv.AppendLine("کد,ماده,مقدار,واحد,قیمت,تاریخ ورود,تاریخ انقضا,ثبت‌کننده");
-        foreach (var e in entries) csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.EnteredQuantity},{e.EnteredUnitName},{e.PricePerUnit},{e.EntryDate.ToShamsi()},{e.ExpiryDate.ToShamsi()},{e.CreatedByUsername}");
+        csv.AppendLine("کد,ماده,مقدار,واحد,مبلغ کل,تاریخ ورود,تاریخ انقضا,ثبت‌کننده");
+        foreach (var e in entries) csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.EnteredQuantity},{e.EnteredUnitName},{e.TotalPrice},{e.EntryDate.ToShamsi()},{e.ExpiryDate.ToShamsi()},{e.CreatedByUsername}");
         csv.AppendLine("\n=== خروجی‌ها ===");
         csv.AppendLine("کد,ماده,مقدار,واحد,تاریخ,کاربر,وضعیت,تایید‌کننده");
         foreach (var w in withdrawals) csv.AppendLine($"{w.Material?.Code},{w.Material?.Name},{w.EnteredQuantity},{w.EnteredUnitName},{w.WithdrawalDate.ToShamsi()},{w.CreatedByUsername},{w.Status},{w.ApprovedByUsername}");

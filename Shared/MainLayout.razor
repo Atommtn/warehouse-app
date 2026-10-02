@@ -29,7 +29,7 @@
             @if(Auth.CanAccess("materials")){<li class="@A("materials")"><button @onclick='()=>Go("materials")'>📦 مواد اولیه</button></li>}
             @if(Auth.CanAccess("archive")){<li class="@A("archive")"><button @onclick='()=>Go("archive")'>🗄️ آرشیو مواد اولیه</button></li>}
             @if(Auth.CanAccess("warehouses")){<li class="@A("warehouses")"><button @onclick='()=>Go("warehouses")'>🏬 انبارها و تفصیل</button></li>}
-            @if(Auth.CanAccess("unit-config")){<li class="@A("unit-config")"><button @onclick='()=>Go("unit-config")'>⚖️ بازتعریف واحدها</button></li>}
+            @if(Auth.CanAccess("unit-config")){<li class="@A("unit-config")"><button @onclick='()=>Go("unit-config")'>⚖️ واحدهای کالا</button></li>}
             @if(Auth.CanAccess("definitions")){
             <li class="nav-parent @(IsDefinitions()?"active":"")">
                 <button @onclick="ToggleDefs" class="nav-parent-btn">

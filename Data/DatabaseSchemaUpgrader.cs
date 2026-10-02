@@ -147,18 +147,30 @@ BEGIN
     ALTER TABLE [StockWithdrawals] ADD [WarehouseId] int NULL;
     ALTER TABLE [StockWithdrawals] ADD CONSTRAINT [FK_StockWithdrawals_Warehouses] FOREIGN KEY ([WarehouseId]) REFERENCES [Warehouses]([Id]);
 END;
--- Base-unit quantities need 6 decimals so units like 1 عدد = 1/30 شانه do not drift (e.g. 10 eggs must be 0.666667 kg, not 0.67).
+-- MaterialUnitConversions may have just been created above without the definition columns.
+IF COL_LENGTH('MaterialUnitConversions','DefinedRefUnit') IS NULL
+BEGIN
+ ALTER TABLE [MaterialUnitConversions] ADD [DefinedRefUnit] nvarchar(100) NOT NULL CONSTRAINT [DF_MaterialUnitConversions_DefinedRefUnit] DEFAULT N'';
+ ALTER TABLE [MaterialUnitConversions] ADD [DefinedCount] decimal(24,6) NOT NULL CONSTRAINT [DF_MaterialUnitConversions_DefinedCount] DEFAULT 1;
+ ALTER TABLE [MaterialUnitConversions] ADD [DefinedAmount] decimal(24,6) NOT NULL CONSTRAINT [DF_MaterialUnitConversions_DefinedAmount] DEFAULT 0;
+END;
+-- Stock-unit model: quantities are counted in Materials.StockUnitName; other units say how many of them make one stock unit.
+IF COL_LENGTH('Materials','StockUnitName') IS NULL ALTER TABLE [Materials] ADD [StockUnitName] nvarchar(100) NOT NULL CONSTRAINT [DF_Materials_StockUnitName] DEFAULT N'';
+IF COL_LENGTH('MaterialUnitConversions','PerStockUnit') IS NULL ALTER TABLE [MaterialUnitConversions] ADD [PerStockUnit] decimal(28,10) NOT NULL CONSTRAINT [DF_MaterialUnitConversions_PerStockUnit] DEFAULT 1;
+IF COL_LENGTH('MaterialUnitConversions','IsApproximate') IS NULL ALTER TABLE [MaterialUnitConversions] ADD [IsApproximate] bit NOT NULL CONSTRAINT [DF_MaterialUnitConversions_IsApproximate] DEFAULT 0;
+IF COL_LENGTH('StockEntries','TotalPrice') IS NULL ALTER TABLE [StockEntries] ADD [TotalPrice] decimal(18,2) NOT NULL CONSTRAINT [DF_StockEntries_TotalPrice] DEFAULT 0;
+-- Stock-unit quantities need 10 decimals so 10 eggs of a 180-egg carton (0.0555555556 کارتن) add back up exactly.
 DECLARE @qtyColumns TABLE([TableName] sysname,[ColumnName] sysname);
-INSERT INTO @qtyColumns VALUES(N'StockEntries',N'Quantity'),(N'StockWithdrawals',N'Quantity'),(N'Materials',N'CurrentStock'),(N'Materials',N'MinStockLevel'),(N'WarehouseStocks',N'Quantity'),(N'WarehouseStocks',N'MinStockLevel'),(N'InventoryTransactions',N'IncomingQuantity'),(N'InventoryTransactions',N'OutgoingQuantity'),(N'InventoryTransactions',N'BalanceAfter');
+INSERT INTO @qtyColumns VALUES(N'StockEntries',N'Quantity'),(N'StockWithdrawals',N'Quantity'),(N'Materials',N'CurrentStock'),(N'Materials',N'MinStockLevel'),(N'WarehouseStocks',N'Quantity'),(N'WarehouseStocks',N'MinStockLevel'),(N'InventoryTransactions',N'IncomingQuantity'),(N'InventoryTransactions',N'OutgoingQuantity'),(N'InventoryTransactions',N'BalanceAfter'),(N'StockEntries',N'ConversionFactor'),(N'StockWithdrawals',N'ConversionFactor');
 DECLARE @tableName sysname,@columnName sysname,@constraintName sysname,@sql nvarchar(max);
 DECLARE qty_cursor CURSOR LOCAL FAST_FORWARD FOR
- SELECT q.[TableName],q.[ColumnName] FROM @qtyColumns q JOIN sys.columns c ON c.[object_id]=OBJECT_ID(q.[TableName]) AND c.[name]=q.[ColumnName] WHERE c.[scale]<6;
+ SELECT q.[TableName],q.[ColumnName] FROM @qtyColumns q JOIN sys.columns c ON c.[object_id]=OBJECT_ID(q.[TableName]) AND c.[name]=q.[ColumnName] WHERE c.[scale]<10;
 OPEN qty_cursor; FETCH NEXT FROM qty_cursor INTO @tableName,@columnName;
 WHILE @@FETCH_STATUS=0
 BEGIN
  SET @constraintName=(SELECT TOP(1) dc.[name] FROM sys.default_constraints dc JOIN sys.columns c ON c.[object_id]=dc.[parent_object_id] AND c.[column_id]=dc.[parent_column_id] WHERE dc.[parent_object_id]=OBJECT_ID(@tableName) AND c.[name]=@columnName);
  IF @constraintName IS NOT NULL BEGIN SET @sql=N'ALTER TABLE '+QUOTENAME(@tableName)+N' DROP CONSTRAINT '+QUOTENAME(@constraintName); EXEC sp_executesql @sql; END;
- SET @sql=N'ALTER TABLE '+QUOTENAME(@tableName)+N' ALTER COLUMN '+QUOTENAME(@columnName)+N' decimal(24,6) NOT NULL'; EXEC sp_executesql @sql;
+ SET @sql=N'ALTER TABLE '+QUOTENAME(@tableName)+N' ALTER COLUMN '+QUOTENAME(@columnName)+N' decimal(28,10) NOT NULL'; EXEC sp_executesql @sql;
  IF @constraintName IS NOT NULL BEGIN SET @sql=N'ALTER TABLE '+QUOTENAME(@tableName)+N' ADD CONSTRAINT '+QUOTENAME(@constraintName)+N' DEFAULT 0 FOR '+QUOTENAME(@columnName); EXEC sp_executesql @sql; END;
  FETCH NEXT FROM qty_cursor INTO @tableName,@columnName;
 END;
@@ -173,6 +185,19 @@ IF OBJECT_ID(N'[AssetDisposals]',N'U') IS NULL
 SET XACT_ABORT ON;
 BEGIN TRANSACTION;
 BEGIN TRY
+-- A database that already has per-warehouse stock but never ran the steps below (warehouses were set up by hand) must skip them:
+-- they would create a second "MAIN" warehouse from Materials.CurrentStock and merge it into the real one, doubling every stock.
+-- Its quantities are still in each material's stock unit, which the stock-units-v1 step (C#) relies on.
+IF NOT EXISTS(SELECT 1 FROM [AppDataMigrations] WHERE [MigrationKey] IN (N'merge-duplicate-warehouses-v2',N'allocate-warehouses-and-rebuild-cardex-v1',N'normalize-units-v1'))
+   AND EXISTS(SELECT 1 FROM [WarehouseStocks])
+BEGIN
+ INSERT INTO [AppDataMigrations] VALUES(N'merge-duplicate-warehouses-v2',SYSUTCDATETIME()),(N'allocate-warehouses-and-rebuild-cardex-v1',SYSUTCDATETIME()),(N'normalize-units-v1',SYSUTCDATETIME()),(N'normalize-units-v1-skipped',SYSUTCDATETIME());
+END;
+-- A brand-new or pre-warehouse database has nothing in base units yet either.
+IF NOT EXISTS(SELECT 1 FROM [AppDataMigrations] WHERE [MigrationKey]=N'normalize-units-v1')
+BEGIN
+ INSERT INTO [AppDataMigrations] VALUES(N'normalize-units-v1',SYSUTCDATETIME()),(N'normalize-units-v1-skipped',SYSUTCDATETIME());
+END;
 IF NOT EXISTS(SELECT 1 FROM [AppDataMigrations] WHERE [MigrationKey]=N'merge-duplicate-warehouses-v2')
 BEGIN
  IF NOT EXISTS (SELECT 1 FROM [Warehouses] WHERE [Code]=N'MAIN') INSERT INTO [Warehouses] ([Code],[Name]) VALUES (N'MAIN',N'انبار اصلی');
@@ -275,13 +300,16 @@ BEGIN
  INSERT INTO [AppDataMigrations] VALUES(N'merge-duplicate-warehouses-v2',SYSUTCDATETIME());
 END;
 
--- Materials created without unit conversions get their stock unit and base unit so entry/withdrawal can pick a unit.
+-- Superseded by stock-units-v1, which gives every material its units.
+IF NOT EXISTS(SELECT 1 FROM [AppDataMigrations] WHERE [MigrationKey]=N'stock-units-v1')
+BEGIN
 INSERT INTO [MaterialUnitConversions]([MaterialId],[UnitName],[FactorToBaseUnit],[IsLegacyStockUnit],[IsActive])
 SELECT m.[Id],u.[Name],CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END,1,1 FROM [Materials] m JOIN [Units] u ON u.[Id]=m.[UnitId]
 WHERE u.[Name]<>N'' AND NOT EXISTS(SELECT 1 FROM [MaterialUnitConversions] c WHERE c.[MaterialId]=m.[Id] AND (c.[IsActive]=1 OR c.[UnitName]=u.[Name]));
 INSERT INTO [MaterialUnitConversions]([MaterialId],[UnitName],[FactorToBaseUnit],[IsLegacyStockUnit],[IsActive])
 SELECT m.[Id],m.[BaseUnitName],1,CASE WHEN EXISTS(SELECT 1 FROM [MaterialUnitConversions] c WHERE c.[MaterialId]=m.[Id] AND c.[IsLegacyStockUnit]=1) THEN 0 ELSE 1 END,1 FROM [Materials] m
 WHERE m.[BaseUnitName]<>N'' AND NOT EXISTS(SELECT 1 FROM [MaterialUnitConversions] c WHERE c.[MaterialId]=m.[Id] AND c.[UnitName]=m.[BaseUnitName]);
+END;
 COMMIT TRANSACTION;
 END TRY
 BEGIN CATCH
@@ -289,5 +317,7 @@ BEGIN CATCH
  THROW;
 END CATCH;
 """);
+
+        StockUnitMigration.Run(db);
     }
 }

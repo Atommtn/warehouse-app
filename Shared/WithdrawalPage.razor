@@ -9,19 +9,16 @@
     <div class="form-grid">
         <div class="form-group"><label>انبار مبدأ *</label><select class="form-input" value="@warehouseId" @onchange="OnWarehouseChange"><option value="0">انتخاب کنید...</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
         <div class="form-group">
-            <label>ماده اولیه *</label>
-            <input value="@materialSearch" @oninput="OnMaterialSearch" class="form-input" placeholder="🔍 جستجوی نام یا کد ماده..." />
-            <select value="@selId" @onchange="OnMaterialChange" class="form-input">
-                <option value="0">انتخاب کنید...</option>
-                @foreach (var m in materials) { <option value="@m.Id">[@m.Code] @m.Name — @display.Format(m.CurrentStock, m)</option> }
-            </select>
-            @if (sel != null) { <small class="form-hint">موجودی این انبار: @display.Format(selectedStock, sel)</small> }
+            <label>ماده اولیه * <small class="text-muted">(فقط کالاهای موجود در این انبار)</small></label>
+            <MaterialPicker Materials="AvailableMaterials" SelectedId="selId" SelectedIdChanged="OnMaterialChange" Detail="@(m => display.Format(StockOf(m.Id), m))" Disabled="@(warehouseId == 0)" />
+            @if (sel != null) { <small class="form-hint">موجودی این انبار: <strong>@display.Format(selectedStock, sel)</strong></small> }
         </div>
         <div class="form-group">
             <label>مقدار *</label>
-            <input @bind="qty" type="number" step="0.01" class="form-input" />
+            <div class="quantity-with-action"><input @bind="qty" type="number" step="any" min="0" class="form-input" /><button type="button" class="btn btn-secondary btn-sm" @onclick="UseAll" disabled="@(units == null)">همه</button></div>
+            @if (units != null && qty > 0 && units.Has(selectedUnit) && !UnitSet.Same(selectedUnit, units.StockUnit)) { <small class="form-hint">= @units.Format(units.ToStock(qty, selectedUnit))</small> }
         </div>
-        <div class="form-group"><label>واحد خروج *</label><select class="form-input" @bind="selectedUnit"><option value="">انتخاب کنید...</option>@foreach(var u in materialUnits){<option value="@u.UnitName">@u.UnitName</option>}</select></div>
+        <div class="form-group"><label>واحد خروج *</label><select class="form-input" @bind="selectedUnit" disabled="@(units == null)">@if(units != null){@foreach(var u in units.Choices){<option value="@u">@u</option>}}</select></div>
         <div class="form-group">
             <label>تاریخ خروج *</label>
             <PersianDatePicker Value="@wDate" ValueChanged="@(d => wDate = d)" Placeholder="1403/01/15" />
@@ -39,7 +36,7 @@
     @if (!string.IsNullOrEmpty(ok))  { <div class="alert alert-success">@ok</div> }
     @if (!string.IsNullOrEmpty(err)) { <div class="alert alert-error">@err</div> }
     <div class="form-actions">
-        <button class="btn btn-primary" @onclick="Submit">
+        <button class="btn btn-primary" @onclick="Submit" disabled="@busy">
             ✅ ثبت خروج
         </button>
         <button class="btn btn-secondary" @onclick="Reset">پاک کردن</button>
@@ -52,7 +49,7 @@
         <h3>✏️ ویرایش خروج — [@editing.Material?.Code] @editing.Material?.Name (@editing.Warehouse?.Name)</h3>
         <div class="form-grid">
             <div class="form-group"><label>مقدار *</label><input @bind="eQty" type="number" step="0.001" class="form-input" /></div>
-            <div class="form-group"><label>واحد خروج *</label><select class="form-input" @bind="eUnit">@foreach(var u in editUnits){<option value="@u.UnitName">@u.UnitName</option>}</select></div>
+            <div class="form-group"><label>واحد خروج *</label><select class="form-input" @bind="eUnit">@if(editUnits != null){@foreach(var u in editUnits.Choices){<option value="@u">@u</option>}}</select></div>
             <div class="form-group"><label>تاریخ خروج *</label><PersianDatePicker Value="@eDate" ValueChanged="@(d => eDate = d)" /></div>
             <div class="form-group"><label>مصرف در بخش *</label><input @bind="eDepartment" list="withdrawal-departments" class="form-input" /></div>
             <div class="form-group"><label>دلیل خروج</label><input @bind="eReason" class="form-input" /></div>
@@ -80,7 +77,7 @@
                     <td>@w.Warehouse?.Name</td>
                     <td><code>@w.Material?.Code</code></td>
                     <td>@w.Material?.Name</td>
-                    <td>@w.EnteredQuantity.ToString("N3") @w.EnteredUnitName <small class="text-muted">= @w.Quantity.ToString("N3") @w.Material?.BaseUnitName</small></td>
+                    <td>@UnitSet.N(w.EnteredQuantity > 0 ? w.EnteredQuantity : w.Quantity) @(string.IsNullOrEmpty(w.EnteredUnitName) ? w.Material?.StockUnitName : w.EnteredUnitName) @if (!UnitSet.Same(w.EnteredUnitName, w.Material?.StockUnitName)) {<small class="text-muted">= @display.Format(w.Quantity, w.Material)</small>}</td>
                     <td>@w.Department</td>
                     <td>@w.WithdrawalDate.ToShamsi()</td>
                     <td>@w.CreatedByUsername</td>
@@ -97,38 +94,45 @@
 </div>
 
 @code {
-    List<Material> materials=new(); List<StockWithdrawal> withdrawals=new(); List<Warehouse> warehouses=new();
-    int warehouseId; decimal selectedStock;
-    Material? sel; int selId=0; decimal qty=0; string reason="",department="",ok="",err="",selectedUnit="";List<MaterialUnitConversion> materialUnits=new();List<string> departments=new();
+    List<StockWithdrawal> withdrawals=new(); List<Warehouse> warehouses=new(); List<WarehouseStock> stocks=new();
+    int warehouseId; decimal selectedStock; bool busy;
+    Material? sel; int selId=0; decimal qty=0; string reason="",department="",ok="",err="",selectedUnit=""; UnitSet? units; List<string> departments=new();
     DateTime wDate=DateTime.Today;
-    string materialSearch="", withdrawalSearch="", period="month"; StockDisplay display=StockDisplay.Empty;
-    StockWithdrawal? editing; decimal eQty; string eUnit="", eDepartment="", eReason="", editErr=""; DateTime eDate; List<MaterialUnitConversion> editUnits=new();
+    string withdrawalSearch="", period="month"; StockDisplay display=StockDisplay.Empty;
+    StockWithdrawal? editing; decimal eQty; string eUnit="", eDepartment="", eReason="", editErr=""; DateTime eDate; UnitSet? editUnits;
 
-    protected override async Task OnInitializedAsync() => await Load();
+    IEnumerable<Material> AvailableMaterials => stocks.Where(x => x.Quantity > 0 && x.Material != null).Select(x => x.Material!);
+    decimal StockOf(int materialId) => stocks.FirstOrDefault(x => x.MaterialId == materialId)?.Quantity ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        display = await Warehouse.GetStockDisplayAsync();
+        warehouses = await Warehouse.GetWarehousesAsync(); warehouseId = warehouses.FirstOrDefault()?.Id ?? 0;
+        await Load();
+    }
 
     async Task Load()
     {
-        materials = await Warehouse.GetMaterialsAsync(); display = await Warehouse.GetStockDisplayAsync();
-        warehouses = await Warehouse.GetWarehousesAsync(); if(warehouseId==0) warehouseId=warehouses.FirstOrDefault()?.Id??0;
+        stocks = warehouseId > 0 ? await Warehouse.GetWarehouseStocksAsync(warehouseId) : new();
         withdrawals = await Warehouse.GetWithdrawalsAsync(search: withdrawalSearch, from: PeriodFilter.Start(period));
         var known = new[] { "تولید نان", "شیرینی‌پزی", "فروشگاه", "آشپزخانه" };
         departments = known.Union(await Warehouse.GetWithdrawalDepartmentsAsync()).ToList();
+        if (selId > 0) selectedStock = StockOf(selId);
     }
 
-    async Task OnMaterialChange(ChangeEventArgs e)
+    async Task OnMaterialChange(int id)
     {
-        selId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
-        sel = materials.FirstOrDefault(m => m.Id == selId);
-        materialUnits=selId>0?await Warehouse.GetMaterialUnitsAsync(selId):new();selectedUnit=display.UnitOf(selId)??materialUnits.FirstOrDefault()?.UnitName??"";
-        selectedStock=warehouseId>0&&selId>0?await Warehouse.GetWarehouseStockAsync(warehouseId,selId):0;
+        selId = id; sel = AvailableMaterials.FirstOrDefault(m => m.Id == id);
+        units = id > 0 ? await Warehouse.GetUnitSetAsync(id) : null; selectedUnit = units?.StockUnit ?? "";
+        selectedStock = StockOf(id);
     }
-    async Task OnWarehouseChange(ChangeEventArgs e){warehouseId=int.TryParse(e.Value?.ToString(),out var id)?id:0;selectedStock=warehouseId>0&&selId>0?await Warehouse.GetWarehouseStockAsync(warehouseId,selId):0;}
-
-    async Task OnMaterialSearch(ChangeEventArgs e)
+    async Task OnWarehouseChange(ChangeEventArgs e)
     {
-        materialSearch = e.Value?.ToString() ?? "";
-        materials = await Warehouse.GetMaterialsAsync(materialSearch);
+        warehouseId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        stocks = warehouseId > 0 ? await Warehouse.GetWarehouseStocksAsync(warehouseId) : new();
+        if (selId > 0 && StockOf(selId) <= 0) await OnMaterialChange(0); else selectedStock = StockOf(selId);
     }
+    void UseAll() { if (units != null && units.Has(selectedUnit)) qty = UnitSet.Same(selectedUnit, units.StockUnit) ? selectedStock : Math.Round(units.FromStock(selectedStock, selectedUnit), 6); }
 
     async Task OnWithdrawalSearch(ChangeEventArgs e)
     {
@@ -139,34 +143,36 @@
     async Task Submit()
     {
         ok=""; err="";
-        if (selId==0) { err="ماده را انتخاب کنید"; return; }
         if (warehouseId==0) { err="انبار مبدأ را انتخاب کنید"; return; }
+        if (selId==0) { err="ماده را انتخاب کنید"; return; }
         if (qty<=0)   { err="مقدار باید بیشتر از صفر باشد"; return; }
         if (string.IsNullOrWhiteSpace(department)) { err="بخش مصرف‌کننده را مشخص کنید"; return; }
+        busy = true;
         try
         {
             await Warehouse.AddWithdrawalAsync(new StockWithdrawal
             {
-                MaterialId=selId, WarehouseId=warehouseId, EnteredQuantity=qty,EnteredUnitName=selectedUnit,Quantity=qty, WithdrawalDate=wDate, Reason=reason, Department=department.Trim(),
+                MaterialId=selId, WarehouseId=warehouseId, EnteredQuantity=qty, EnteredUnitName=selectedUnit, WithdrawalDate=wDate, Reason=reason, Department=department.Trim(),
                 CreatedByUserId=Auth.CurrentUser!.Id, CreatedByUsername=Auth.CurrentUser.Username,
                 Status = WithdrawalStatus.Approved
             });
-            ok = $"✅ {qty} {selectedUnit} از [{sel?.Code}] {sel?.Name} برای بخش {department.Trim()} در {wDate.ToShamsi()} ثبت شد";
-            await Load(); Reset();
+            ok = $"✅ {UnitSet.N(qty)} {selectedUnit} از [{sel?.Code}] {sel?.Name} برای بخش {department.Trim()} در {wDate.ToShamsi()} ثبت شد";
+            Reset(); await Load();
         }
         catch (Exception ex) { err = $"❌ {ex.Message}"; }
+        finally { busy = false; }
     }
 
-    void Reset() { selId=0; qty=0; sel=null; wDate=DateTime.Today; reason=""; }
+    void Reset() { selId=0; qty=0; sel=null; units=null; selectedUnit=""; wDate=DateTime.Today; reason=""; }
 
     async Task OnPeriodChange(ChangeEventArgs e) { period = e.Value?.ToString() ?? "month"; withdrawals = await Warehouse.GetWithdrawalsAsync(search: withdrawalSearch, from: PeriodFilter.Start(period)); }
 
     async Task StartEdit(StockWithdrawal w)
     {
-        editing = w; eQty = w.EnteredQuantity > 0 ? w.EnteredQuantity : w.Quantity; eUnit = w.EnteredUnitName; eDate = w.WithdrawalDate;
+        editing = w; eQty = w.EnteredQuantity > 0 ? w.EnteredQuantity : w.Quantity; eDate = w.WithdrawalDate;
         eDepartment = w.Department; eReason = w.Reason; editErr = "";
-        editUnits = await Warehouse.GetMaterialUnitsAsync(w.MaterialId);
-        if (!editUnits.Any(u => u.UnitName == eUnit)) eUnit = editUnits.FirstOrDefault()?.UnitName ?? "";
+        editUnits = await Warehouse.GetUnitSetAsync(w.MaterialId);
+        eUnit = editUnits.Has(w.EnteredUnitName) ? w.EnteredUnitName : editUnits.StockUnit;
     }
 
     async Task SaveEdit()

@@ -9,7 +9,7 @@
 </div>
 
 <div class="search-bar">
-    <input value="@search" @oninput="OnSearch" class="form-input search-input" placeholder="🔍 جستجو بر اساس نام یا کد..." />
+    <input value="@search" @oninput="e => search = e.Value?.ToString() ?? string.Empty" class="form-input search-input" placeholder="🔍 جستجو بر اساس نام یا کد..." />
 </div>
 
 @if (showForm && Auth.IsManager)
@@ -30,32 +30,34 @@
             @if (!editId.HasValue)
             {
             <div class="form-group">
-                <label>واحد انبار *</label>
-                <select @bind="fUnitId" class="form-input">
+                <label>واحد موجودی *</label>
+                <select @bind="fStockUnit" class="form-input">
                     <option value="">انتخاب کنید...</option>
-                    @foreach (var u in units) { <option value="@u.Id">@u.Name</option> }
+                    @foreach (var u in UnitNames) { <option value="@u">@u</option> }
                 </select>
+                <small class="form-hint">انبار با این واحد شمرده می‌شود (گونی، کارتن، سطل...)</small>
             </div>
             <div class="form-group">
-                <label>هر ۱ واحد انبار چند واحد پایه است؟ *</label>
-                <input @bind="fBaseQuantity" type="number" step="0.001" min="0.001" class="form-input" placeholder="مثال: ۴۰" />
-                <small class="form-hint">مثال: ۱ گونی = ۴۰ کیلوگرم → عدد ۴۰ را وارد کنید</small>
-            </div>
-            <div class="form-group">
-                <label>واحد پایه (برای رسپی) *</label>
-                <select @bind="fBaseUnitName" class="form-input">
-                    <option value="">انتخاب کنید...</option>
-                    @foreach(var u in units){<option value="@u.Name">@u.Name</option>}
+                <label>واحد رسپی *</label>
+                <select @bind="fRecipeUnit" class="form-input">
+                    @foreach (var u in UnitNames) { <option value="@u">@u</option> }
                 </select>
-                <small class="form-hint">در رسپی مقدار را بر اساس این واحد وارد می‌کنید</small>
+                <small class="form-hint">مبنای قیمت و هزینه‌ی رسپی (معمولاً کیلوگرم)</small>
             </div>
+            @if (NeedsRecipeRelation)
+            {
+            <div class="form-group">
+                <label>هر ۱ @fStockUnit چند @fRecipeUnit است؟ *</label>
+                <input @bind="fRecipePerStock" type="number" step="any" min="0" class="form-input" placeholder="مثال: ۴۰" />
+                <label class="permission-item"><input type="checkbox" @bind="fApproximate" /><span>تقریبی است (مثلاً وزن کارتن ثابت نیست)</span></label>
+            </div>
+            }
             }
             else
             {
-            <div class="form-group"><label>واحدها</label><div class="form-hint">برای تغییر واحد پایه یا واحدهای خرید (گونی، کارتن، شانه و...) از صفحه‌ی «تعریف واحدهای کالا» استفاده کنید تا موجودی و سوابق هم درست محاسبه شوند.</div>
-            </div>
+            <div class="form-group"><label>واحدها</label><div class="form-hint">واحد موجودی: <strong>@editStockUnit</strong> — برای تغییر واحدها یا افزودن واحدهای دیگر (شانه، عدد، بسته...) به صفحه‌ی «واحدهای کالا» بروید.</div></div>
             }
-            <div class="form-group"><label>حد هشدار موجودی</label><input @bind="fMinStock" type="number" step="0.01" class="form-input" /></div>
+            <div class="form-group"><label>حد هشدار موجودی (@(editId.HasValue ? editStockUnit : fStockUnit))</label><input @bind="fMinStock" type="number" step="any" class="form-input" /></div>
             <div class="form-group">
                 <label>تأمین‌کننده</label>
                 <input value="@supplierSearch" @oninput="OnSupplierSearch" class="form-input" placeholder="🔍 جستجوی تأمین‌کننده..." />
@@ -67,8 +69,8 @@
             <div class="form-group"><label>توضیحات</label><input @bind="fNotes" class="form-input" /></div>
         </div>
         <div class="form-note">
-            💡 قیمت در زمان ورود به انبار ثبت می‌شود و میانگین موزون محاسبه خواهد شد.<br/>
-            📐 <strong>مثال:</strong> آرد با واحد انبار «گونی» (۴۰ کیلوگرم) → در رسپی ۰.۳۵ کیلوگرم = ۳۵۰ گرم وارد کنید.
+            💡 قیمت هنگام ورود به انبار ثبت می‌شود.<br/>
+            📐 <strong>مثال:</strong> آرد با واحد موجودی «گونی» و واحد رسپی «کیلوگرم»، هر ۱ گونی = ۴۰ کیلوگرم. در رسپی ۳۵۰ گرم وارد کنید.
         </div>
         @if (!string.IsNullOrEmpty(err)) { <div class="alert alert-error">@err</div> }
         <div class="form-actions">
@@ -82,29 +84,28 @@
     <table class="data-table">
         <thead>
             <tr>
-                <th>کد</th><th>نام</th><th>گروه</th><th>واحد انبار</th>
-                <th>تبدیل واحد</th><th>واحد پایه</th>
+                <th>کد</th><th>نام</th><th>گروه</th><th>واحد موجودی</th>
+                <th>واحدهای دیگر</th><th>واحد رسپی</th>
                 <th>موجودی</th><th>هشدار</th><th>تأمین‌کننده</th><th>وضعیت</th>
                 @if (Auth.IsManager) { <th></th> }
             </tr>
         </thead>
         <tbody>
-            @foreach (var m in materials)
+            @foreach (var m in FilteredMaterials)
             {
+                var set = display.For(m);
                 <tr class="@(m.CurrentStock<=m.MinStockLevel?"row-warning":"")">
                     <td><code>@m.Code</code></td>
                     <td><strong>@m.Name</strong></td>
                     <td>@(m.Group?.Name??"-")</td>
-                    <td>@(m.Unit?.Name??"-")</td>
-                    <td class="text-center">
-                        @if (m.BaseQuantity != 1)
-                        { <span class="conversion-badge">۱ @(m.Unit?.Name??"واحد") = @m.BaseQuantity.ToString("0.###") @m.BaseUnitName</span> }
-                        else
-                        { <span class="text-muted">-</span> }
+                    <td>@m.StockUnitName</td>
+                    <td>
+                        @foreach (var u in set.Units.Where(u => !u.IsDerived && !UnitSet.Same(u.Name, set.StockUnit)))
+                        { <span class="conversion-badge">۱ @set.StockUnit = @(u.IsApproximate ? "≈" : "")@UnitSet.N(u.PerStockUnit) @u.Name</span> }
                     </td>
-                    <td>@m.BaseUnitName</td>
-                    <td>@display.Format(m.CurrentStock, m, "N2")</td>
-                    <td>@m.MinStockLevel.ToString("N2") @m.BaseUnitName</td>
+                    <td>@m.RecipeUnitName</td>
+                    <td>@display.Format(m.CurrentStock, m)</td>
+                    <td>@UnitSet.N(m.MinStockLevel) @m.StockUnitName</td>
                     <td>@(m.Supplier?.Name??"-")</td>
                     <td>
                         @if (m.CurrentStock<=m.MinStockLevel)          { <span class="status-badge danger">خرید</span> }
@@ -129,9 +130,12 @@
     List<Material> materials=new(); List<Supplier> suppliers=new();
     List<Unit> units=new(); List<MaterialGroup> groups=new();
     bool showForm; int? editId; string search=""; StockDisplay display=StockDisplay.Empty;
-    string fCode="",fName="",fNotes="",fBaseUnitName="کیلوگرم",err="";
-    decimal fMinStock=0, fBaseQuantity=1;
-    int? fSupplierId, fUnitId, fGroupId;
+    string fCode="",fName="",fNotes="",fStockUnit="",fRecipeUnit="کیلوگرم",editStockUnit="",err="";
+    decimal fMinStock=0, fRecipePerStock=0; bool fApproximate;
+    int? fSupplierId, fGroupId;
+    IEnumerable<Material> FilteredMaterials => materials.Where(m => TextSearch.Matches(search, m.Name, m.Code));
+    IEnumerable<string> UnitNames => units.Select(u => u.Name).Concat(new[] { "کیلوگرم", "گرم", "لیتر", "میلی‌لیتر", "عدد" }).Distinct(StringComparer.OrdinalIgnoreCase);
+    bool NeedsRecipeRelation => !string.IsNullOrWhiteSpace(fStockUnit) && !UnitSet.Same(fStockUnit, fRecipeUnit) && UnitSet.StandardFactor(fStockUnit, fRecipeUnit) == null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -141,7 +145,6 @@
         groups    = await Warehouse.GetGroupsAsync();
     }
 
-    async Task OnSearch(ChangeEventArgs e) { search=e.Value?.ToString()??""; materials=await Warehouse.GetMaterialsAsync(search); }
 
     async Task OnGroupSearch(ChangeEventArgs e)
     {
@@ -158,15 +161,15 @@
     void ShowAdd()
     {
         editId=null; fCode=fName=fNotes=err="";
-        fMinStock=0; fBaseQuantity=1; fBaseUnitName="کیلوگرم";
-        fSupplierId=fUnitId=fGroupId=null; showForm=true;
+        fMinStock=0; fRecipePerStock=0; fApproximate=false; fStockUnit=""; fRecipeUnit="کیلوگرم";
+        fSupplierId=fGroupId=null; showForm=true;
     }
 
     void Edit(Material m)
     {
         editId=m.Id; fCode=m.Code; fName=m.Name; fMinStock=m.MinStockLevel;
-        fSupplierId=m.SupplierId; fUnitId=m.UnitId; fGroupId=m.GroupId;
-        fNotes=m.Notes; fBaseQuantity=m.BaseQuantity; fBaseUnitName=m.BaseUnitName;
+        fSupplierId=m.SupplierId; fGroupId=m.GroupId; editStockUnit=m.StockUnitName;
+        fNotes=m.Notes;
         err=""; showForm=true;
     }
 
@@ -175,30 +178,24 @@
         err="";
         if (string.IsNullOrWhiteSpace(fCode)) { err="کد ماده اجباری است"; return; }
         if (string.IsNullOrWhiteSpace(fName)) { err="نام ماده اجباری است"; return; }
-        if (string.IsNullOrWhiteSpace(fBaseUnitName)) { err="واحد پایه اجباری است"; return; }
-        if (fBaseQuantity <= 0) { err="مقدار واحد پایه در هر واحد انبار باید بزرگتر از صفر باشد"; return; }
+        if (!editId.HasValue && string.IsNullOrWhiteSpace(fStockUnit)) { err="واحد موجودی اجباری است"; return; }
+        if (!editId.HasValue && NeedsRecipeRelation && fRecipePerStock <= 0) { err=$"بگویید هر ۱ {fStockUnit} چند {fRecipeUnit} است"; return; }
         if (await Warehouse.CodeExistsAsync(fCode, editId)) { err=$"کد {fCode} قبلاً ثبت شده"; return; }
-        if (editId.HasValue)
+        try
         {
-            var m = await Warehouse.GetMaterialAsync(editId.Value);
-            if (m!=null)
-            {
-                m.Code=fCode; m.Name=fName; m.GroupId=fGroupId;
-                m.MinStockLevel=fMinStock; m.SupplierId=fSupplierId; m.Notes=fNotes;
-                await Warehouse.UpdateMaterialAsync(m);
-            }
+            if (editId.HasValue)
+                await Warehouse.UpdateMaterialAsync(new Material { Id=editId.Value, Code=fCode.Trim(), Name=fName.Trim(), GroupId=fGroupId, MinStockLevel=fMinStock, SupplierId=fSupplierId, Notes=fNotes });
+            else
+                await Warehouse.AddMaterialAsync(new Material
+                {
+                    Code=fCode.Trim(), Name=fName.Trim(), GroupId=fGroupId,
+                    MinStockLevel=fMinStock, SupplierId=fSupplierId, Notes=fNotes,
+                    StockUnitName=fStockUnit, RecipeUnitName=string.IsNullOrWhiteSpace(fRecipeUnit) ? fStockUnit : fRecipeUnit
+                }, fRecipePerStock, fApproximate);
         }
-        else
-        {
-            await Warehouse.AddMaterialAsync(new Material
-            {
-                Code=fCode, Name=fName, GroupId=fGroupId, UnitId=fUnitId,
-                MinStockLevel=fMinStock, SupplierId=fSupplierId, Notes=fNotes,
-                BaseQuantity=fBaseQuantity, BaseUnitName=fBaseUnitName
-            });
-        }
-        showForm=false; materials=await Warehouse.GetMaterialsAsync(search);
+        catch (Exception ex) { err = ex.Message; return; }
+        showForm=false; materials=await Warehouse.GetMaterialsAsync(); display=await Warehouse.GetStockDisplayAsync();
     }
 
-    async Task Delete(int id) { await Warehouse.DeleteMaterialAsync(id); materials=await Warehouse.GetMaterialsAsync(search); }
+    async Task Delete(int id) { await Warehouse.DeleteMaterialAsync(id); materials=await Warehouse.GetMaterialsAsync(); }
 }

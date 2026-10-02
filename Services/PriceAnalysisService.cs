@@ -82,7 +82,7 @@ public class PriceAnalysisService
             MaterialId = m.Id,
             MaterialName = m.Name,
             MaterialCode = m.Code,
-            Unit = m.BaseUnitName,
+            Unit = m.StockUnitName,
             CurrentStock = m.CurrentStock
         };
 
@@ -94,10 +94,11 @@ public class PriceAnalysisService
 
         // میانگین موزون: Σ(quantity × price) / Σ(quantity)
         decimal totalQty = entries.Sum(e => e.Quantity);
-        decimal totalValue = entries.Sum(e => (e.EnteredQuantity>0?e.EnteredQuantity:e.Quantity) * e.PricePerUnit);
+        decimal totalValue = entries.Sum(e => e.Quantity * e.PricePerStockUnit);
         analysis.WeightedAvgPrice = totalQty > 0 ? totalValue / totalQty : 0;
 
-        decimal BasePrice(StockEntry e)=>e.PricePerUnit/(e.ConversionFactor<=0?1:e.ConversionFactor);
+        // همه‌ی قیمت‌ها برای یک واحد موجودی کالا است
+        decimal BasePrice(StockEntry e)=>e.PricePerStockUnit;
         analysis.LastPrice  = BasePrice(entries.Last());
         analysis.FirstPrice = BasePrice(entries.First());
         analysis.MinPrice   = entries.Min(BasePrice);
@@ -125,7 +126,7 @@ public class PriceAnalysisService
         foreach (var e in entries)
         {
             cumQty   += e.Quantity;
-            cumValue += (e.EnteredQuantity>0?e.EnteredQuantity:e.Quantity) * e.PricePerUnit;
+            cumValue += e.Quantity * e.PricePerStockUnit;
             analysis.History.Add(new PriceHistory
             {
                 EntryId       = e.Id,

@@ -1,0 +1,63 @@
+@* Type-to-search material picker: matches name and code ignoring ي/ی، ك/ک، spaces and Persian digits; arrows + Enter pick. *@
+<div class="picker" @onfocusout="Close">
+    <input class="form-input" value="@Text" placeholder="@Placeholder" disabled="@Disabled" autocomplete="off"
+           @oninput="OnInput" @onfocus="Open" @onkeydown="OnKey" />
+    @if (SelectedId > 0 && !open && !Disabled)
+    {
+        <button type="button" class="picker-clear" title="پاک کردن" @onclick="Clear">✕</button>
+    }
+    @if (open && !Disabled)
+    {
+        <div class="picker-list">
+            @if (!matches.Any()) { <div class="picker-empty">کالایی پیدا نشد</div> }
+            @for (var i = 0; i < matches.Count; i++)
+            {
+                var m = matches[i]; var index = i;
+                <div class="picker-item @(index == active ? "active" : "") @(m.Id == SelectedId ? "selected" : "")" @onmousedown="() => Pick(m)" @onmousedown:preventDefault>
+                    <span><code>@m.Code</code> @m.Name</span>
+                    @if (Detail != null) { <small>@Detail(m)</small> }
+                </div>
+            }
+            @if (total > matches.Count) { <div class="picker-empty">@(total - matches.Count) کالای دیگر؛ دقیق‌تر جستجو کنید</div> }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public IEnumerable<Material> Materials { get; set; } = Array.Empty<Material>();
+    [Parameter] public int SelectedId { get; set; }
+    [Parameter] public EventCallback<int> SelectedIdChanged { get; set; }
+    [Parameter] public Func<Material, string>? Detail { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "🔍 نام یا کد کالا را بنویسید...";
+    [Parameter] public bool Disabled { get; set; }
+
+    const int Limit = 30;
+    string query = ""; bool open; int active; int total; List<Material> matches = new();
+
+    Material? Selected => Materials.FirstOrDefault(x => x.Id == SelectedId);
+    string Text => open ? query : Selected is { } s ? $"{s.Code} — {s.Name}" : query;
+
+    void Filter()
+    {
+        var found = Materials.Where(m => TextSearch.Matches(query, m.Name, m.Code))
+            .OrderBy(m => string.IsNullOrWhiteSpace(query) || TextSearch.Normalize(m.Code).StartsWith(TextSearch.Normalize(query)) ? 0 : 1)
+            .ThenBy(m => m.Code).ToList();
+        total = found.Count; matches = found.Take(Limit).ToList(); active = Math.Clamp(active, 0, Math.Max(0, matches.Count - 1));
+    }
+    void Open() { open = true; query = ""; active = 0; Filter(); }
+    void Close() { open = false; query = ""; }
+    void OnInput(ChangeEventArgs e) { query = e.Value?.ToString() ?? ""; open = true; active = 0; Filter(); }
+    async Task Pick(Material m) { open = false; query = ""; SelectedId = m.Id; await SelectedIdChanged.InvokeAsync(m.Id); }
+    async Task Clear() { SelectedId = 0; query = ""; await SelectedIdChanged.InvokeAsync(0); }
+    async Task OnKey(KeyboardEventArgs e)
+    {
+        if (!open && e.Key is "ArrowDown" or "Enter") { Open(); return; }
+        switch (e.Key)
+        {
+            case "ArrowDown": active = Math.Min(active + 1, matches.Count - 1); break;
+            case "ArrowUp": active = Math.Max(active - 1, 0); break;
+            case "Enter": if (matches.Count > 0) await Pick(matches[active]); break;
+            case "Escape": Close(); break;
+        }
+    }
+}

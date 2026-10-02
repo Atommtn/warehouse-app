@@ -12,31 +12,19 @@
             <div class="form-group"><label>انبار مقصد *</label><select @bind="warehouseId" class="form-input"><option value="0">انتخاب کنید...</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
             <div class="form-group">
                 <label>ماده اولیه *</label>
-                <input value="@materialSearch" @oninput="e=>materialSearch=e.Value?.ToString()??string.Empty" class="form-input" placeholder="🔍 جستجوی نام یا کد ماده..." />
-                <select value="@selId" @onchange="OnMaterialChange" class="form-input">
-                    <option value="0">انتخاب کنید...</option>
-                    @foreach (var m in FilteredMaterials) { <option value="@m.Id">[@m.Code] @m.Name</option> }
-                </select>
+                <MaterialPicker Materials="materials" SelectedId="selId" SelectedIdChanged="OnMaterialChange" Detail="@(m => m.StockUnitName)" />
             </div>
             <div class="form-group">
                 <label>مقدار *</label>
-                <input @bind="qty" @bind:after="RecalcTotal" type="number" step="0.01" class="form-input" />
+                <input @bind="qty" type="number" step="any" min="0" class="form-input" />
             </div>
-            <div class="form-group"><label>واحد ورود *</label><select class="form-input" @bind="selectedUnit" @bind:after="RecalcPrice"><option value="">انتخاب کنید...</option>@foreach(var u in materialUnits){<option value="@u.UnitName">@u.UnitName (هر ۱ @u.UnitName = @u.FactorToBaseUnit.ToString("0.###") @selectedMaterial?.BaseUnitName)</option>}</select></div>
+            <div class="form-group"><label>واحد *</label><select class="form-input" @bind="selectedUnit" disabled="@(units == null)">@if(units != null){@foreach(var u in units.Choices){<option value="@u">@u</option>}}</select></div>
             @if (Auth.CanViewPrice)
             {
                 <div class="form-group">
-                    <label>فی خرید هر @(selectedMaterial?.BaseUnitName ?? "واحد پایه") (ریال)</label>
-                    <input @bind="basePrice" @bind:after="RecalcPrice" type="number" class="form-input" />
-                </div>
-                <div class="form-group">
-                    <label>قیمت هر @selectedUnit (ریال) *</label>
-                    <input @bind="price" @bind:after="RecalcBasePrice" type="number" class="form-input" />
-                </div>
-                <div class="form-group">
-                    <label>مبلغ کل (ریال)</label>
-                    <input @bind="total" @bind:after="RecalcFromTotal" type="number" class="form-input" />
-                    <small class="total-hint">مقدار × فی؛ اگر مبلغ کل را وارد کنید، فی خودکار محاسبه می‌شود</small>
+                    <label>مبلغ کل فاکتور (ریال) *</label>
+                    <input @bind="total" @bind:event="oninput" type="number" min="0" class="form-input" />
+                    @if (total > 0) { <small class="form-hint">@UnitSet.N(total, 0) ریال</small> }
                 </div>
             }
             <div class="form-group">
@@ -52,10 +40,27 @@
                 <input @bind="notes" class="form-input" />
             </div>
         </div>
+        @if (units != null && qty > 0 && units.Has(selectedUnit))
+        {
+            var stockQty = units.ToStock(qty, selectedUnit);
+            <div class="info-banner">
+                ورود به انبار: <strong>@units.Format(stockQty)</strong>
+                @if (Auth.CanViewPrice && total > 0)
+                {
+                    var perStock = total / stockQty;
+                    <div class="unit-price-preview">
+                        @foreach (var u in units.Units.Where(x => !x.IsDerived || x.Name == units.RecipeUnit || x.Name is "کیلوگرم" or "لیتر"))
+                        {
+                            <span class="status-badge ok">هر ۱ @u.Name: @(u.IsApproximate ? "≈ " : "")@UnitSet.N(units.PriceOf(u.Name, perStock), 0) ریال</span>
+                        }
+                    </div>
+                }
+            </div>
+        }
         @if (!string.IsNullOrEmpty(ok))  { <div class="alert alert-success">@ok</div> }
         @if (!string.IsNullOrEmpty(err)) { <div class="alert alert-error">@err</div> }
         <div class="form-actions">
-            <button class="btn btn-primary" @onclick="Submit">✅ ثبت ورودی</button>
+            <button class="btn btn-primary" @onclick="Submit" disabled="@busy">✅ ثبت ورودی</button>
             <button class="btn btn-secondary" @onclick="Reset">پاک کردن</button>
         </div>
     </div>
@@ -71,18 +76,14 @@ else
             </div>
             <div class="form-group">
                 <label>مقدار *</label>
-                <input @bind="eQty" type="number" step="0.01" class="form-input" />
+                <input @bind="eQty" type="number" step="any" min="0" class="form-input" />
             </div>
-            <div class="form-group"><label>واحد</label><select class="form-input" @bind="eUnit" @bind:after="RecalcEditPrice">@foreach(var u in editUnits){<option value="@u.UnitName">@u.UnitName</option>}</select></div>
+            <div class="form-group"><label>واحد</label><select class="form-input" @bind="eUnit">@if(editUnits != null){@foreach(var u in editUnits.Choices){<option value="@u">@u</option>}}</select></div>
             @if (Auth.CanViewPrice)
             {
                 <div class="form-group">
-                    <label>فی خرید هر @(editEntry!.Material?.BaseUnitName ?? "واحد پایه") (ریال)</label>
-                    <input @bind="eBasePrice" @bind:after="RecalcEditPrice" type="number" class="form-input" />
-                </div>
-                <div class="form-group">
-                    <label>قیمت هر @eUnit (ریال) *</label>
-                    <input @bind="ePrice" @bind:after="RecalcEditBasePrice" type="number" class="form-input" />
+                    <label>مبلغ کل (ریال) *</label>
+                    <input @bind="eTotal" @bind:event="oninput" type="number" min="0" class="form-input" />
                 </div>
             }
             <div class="form-group">
@@ -98,9 +99,14 @@ else
                 <input @bind="eNotes" class="form-input" />
             </div>
         </div>
+        @if (editUnits != null && eQty > 0 && editUnits.Has(eUnit))
+        {
+            var stockQty = editUnits.ToStock(eQty, eUnit);
+            <div class="info-banner">= <strong>@editUnits.Format(stockQty)</strong>@if (Auth.CanViewPrice && eTotal > 0) {<span> — هر ۱ @editUnits.StockUnit: @UnitSet.N(eTotal / stockQty, 0) ریال</span>}</div>
+        }
         @if (!string.IsNullOrEmpty(editErr)) { <div class="alert alert-error">@editErr</div> }
         <div class="form-actions">
-            <button class="btn btn-primary" @onclick="SaveEdit">💾 ذخیره تغییرات</button>
+            <button class="btn btn-primary" @onclick="SaveEdit" disabled="@busy">💾 ذخیره تغییرات</button>
             <button class="btn btn-secondary" @onclick="CancelEdit">انصراف</button>
         </div>
     </div>
@@ -119,7 +125,7 @@ else
             <thead>
                 <tr>
                     <th>انبار</th><th>کد</th><th>ماده</th><th>مقدار</th>
-                    @if (Auth.CanViewPrice) { <th>قیمت واحد</th><th>مبلغ کل</th> }
+                    @if (Auth.CanViewPrice) { <th>فی هر واحد موجودی</th><th>مبلغ کل</th> }
                     <th>تاریخ ورود</th><th>تاریخ انقضا</th><th>ثبت‌کننده</th>
                     @if (Auth.IsManager) { <th></th> }
                 </tr>
@@ -131,14 +137,14 @@ else
                         <td>@e.Warehouse?.Name</td>
                         <td><code>@e.Material?.Code</code></td>
                         <td>@e.Material?.Name</td>
-                        <td>@e.EnteredQuantity.ToString("N3") @e.EnteredUnitName <small class="text-muted">= @e.Quantity.ToString("N3") @e.Material?.BaseUnitName</small></td>
+                        <td>@UnitSet.N(e.EnteredQuantity) @e.EnteredUnitName @if (!UnitSet.Same(e.EnteredUnitName, e.Material?.StockUnitName)) {<small class="text-muted">= @display.Format(e.Quantity, e.Material)</small>}</td>
                         @if (Auth.CanViewPrice)
                         {
                             <td style="@(e.PricePerUnit < 100000 ? "color:#dc2626;font-weight:bold;" : "")">
-                                @e.PricePerUnit.ToString("N0") ﷼
+                                @e.PricePerUnit.ToString("N0") ﷼ <small class="text-muted">/ @e.Material?.StockUnitName</small>
                                 @if (e.PricePerUnit < 100000) { <span title="قیمت کمتر از ۱۰۰٬۰۰۰ ریال؛ نیازمند تأیید یا اصلاح">⚠️</span> }
                             </td>
-                            <td>@((e.EnteredQuantity * e.PricePerUnit).ToString("N0")) ﷼</td>
+                            <td>@((e.TotalPrice > 0 ? e.TotalPrice : e.Quantity * e.PricePerUnit).ToString("N0")) ﷼</td>
                         }
                         <td>@e.EntryDate.ToShamsi()</td>
                         <td class="@(e.ExpiryDate < DateTime.Now ? "expired" : e.ExpiryDate < DateTime.Now.AddDays(7) ? "expiring" : "")">
@@ -160,7 +166,7 @@ else
         if (badCount > 0)
         {
             <div class="alert alert-error" style="margin-top:0.5rem;">
-                ⚠️ @badCount ورودی با قیمت ۱ ریال یا کمتر نیاز به اصلاح دارند.
+                ⚠️ @badCount ورودی با فی کمتر از ۱۰۰٬۰۰۰ ریال (برای هر واحد موجودی) نیاز به بررسی دارند.
             </div>
         }
     }
@@ -171,15 +177,15 @@ else
     List<Warehouse> warehouses = new(); int warehouseId;
     List<StockEntry> entries = new();
     List<StockEntry> filteredEntries = new();
+    StockDisplay display = StockDisplay.Empty;
 
-    int selId = 0; decimal qty = 0, price = 0, basePrice = 0, total = 0;string selectedUnit="";Material? selectedMaterial;List<MaterialUnitConversion> materialUnits=new();
-    string notes = "", ok = "", err = "", materialSearch = "";
-    IEnumerable<Material> FilteredMaterials => string.IsNullOrWhiteSpace(materialSearch) ? materials : materials.Where(x => x.Id == selId || x.Name.Contains(materialSearch, StringComparison.OrdinalIgnoreCase) || x.Code.Contains(materialSearch, StringComparison.OrdinalIgnoreCase));
+    int selId = 0; decimal qty = 0, total = 0; string selectedUnit = ""; UnitSet? units;
+    string notes = "", ok = "", err = ""; bool busy;
     DateTime entryDate = DateTime.Today, expiryDate = DateTime.Today.AddMonths(6);
 
     bool editMode = false;
     StockEntry? editEntry;
-    decimal eQty, ePrice, eBasePrice;string eUnit="";List<MaterialUnitConversion> editUnits=new();
+    decimal eQty, eTotal; string eUnit = ""; UnitSet? editUnits;
     string eNotes = "", editErr = "";
     DateTime eEntryDate, eExpiryDate;
     string searchEntries = "";
@@ -188,19 +194,16 @@ else
     {
         materials = await Warehouse.GetMaterialsAsync();
         warehouses = await Warehouse.GetWarehousesAsync(); warehouseId = warehouses.FirstOrDefault()?.Id ?? 0;
+        display = await Warehouse.GetStockDisplayAsync();
         entries = await Warehouse.GetEntriesAsync();
-        filteredEntries = entries;
+        ApplyFilter();
     }
 
-    async Task OnMaterialChange(ChangeEventArgs e){selId=int.TryParse(e.Value?.ToString(),out var id)?id:0;selectedMaterial=materials.FirstOrDefault(x=>x.Id==selId);materialUnits=selId>0?await Warehouse.GetMaterialUnitsAsync(selId):new();selectedUnit=materialUnits.FirstOrDefault(x=>x.IsLegacyStockUnit)?.UnitName??materialUnits.FirstOrDefault()?.UnitName??"";RecalcPrice();}
-
-    static decimal Factor(List<MaterialUnitConversion> units,string unit)=>units.FirstOrDefault(x=>x.UnitName==unit)?.FactorToBaseUnit is decimal f&&f>0?f:1;
-    void RecalcPrice(){if(basePrice>0)price=Math.Round(basePrice*Factor(materialUnits,selectedUnit),0);RecalcTotal();}
-    void RecalcTotal()=>total=Math.Round(qty*price,0);
-    void RecalcFromTotal(){if(qty>0){price=Math.Round(total/qty,2);RecalcBasePrice();}}
-    void RecalcBasePrice(){basePrice=Math.Round(price/Factor(materialUnits,selectedUnit),2);total=Math.Round(qty*price,0);}
-    void RecalcEditPrice(){if(eBasePrice>0)ePrice=Math.Round(eBasePrice*Factor(editUnits,eUnit),0);}
-    void RecalcEditBasePrice()=>eBasePrice=Math.Round(ePrice/Factor(editUnits,eUnit),2);
+    async Task OnMaterialChange(int id)
+    {
+        selId = id; units = id > 0 ? await Warehouse.GetUnitSetAsync(id) : null;
+        selectedUnit = units?.StockUnit ?? "";
+    }
 
     void OnSearchEntries(ChangeEventArgs e)
     {
@@ -213,37 +216,43 @@ else
         ok = ""; err = "";
         if (selId == 0) { err = "ماده را انتخاب کنید"; return; }
         if (warehouseId == 0) { err = "انبار مقصد را انتخاب کنید"; return; }
-        if (qty <= 0)   { err = "مقدار باید بیشتر از صفر باشد"; return; }
-        if (Auth.CanViewPrice && price <= 0) { err = "قیمت باید بیشتر از صفر باشد"; return; }
-
-        await Warehouse.AddStockEntryAsync(new StockEntry
+        if (qty <= 0) { err = "مقدار باید بیشتر از صفر باشد"; return; }
+        if (Auth.CanViewPrice && total <= 0) { err = "مبلغ کل را وارد کنید"; return; }
+        busy = true;
+        try
         {
-            MaterialId = selId, WarehouseId=warehouseId, EnteredQuantity=qty,EnteredUnitName=selectedUnit,Quantity = qty, PricePerUnit = price,
-            EntryDate = entryDate, ExpiryDate = expiryDate, Notes = notes,
-            CreatedByUserId = Auth.CurrentUser!.Id, CreatedByUsername = Auth.CurrentUser.Username
-        });
-        var m = materials.FirstOrDefault(x => x.Id == selId);
-        ok = $"✅ {qty} از [{m?.Code}] {m?.Name} در تاریخ {entryDate.ToShamsi()} ثبت شد";
-        materials = await Warehouse.GetMaterialsAsync();
-        entries = await Warehouse.GetEntriesAsync();
-        ApplyFilter();
-        Reset();
+            await Warehouse.AddStockEntryAsync(new StockEntry
+            {
+                MaterialId = selId, WarehouseId = warehouseId, EnteredQuantity = qty, EnteredUnitName = selectedUnit, TotalPrice = Auth.CanViewPrice ? total : 0,
+                EntryDate = entryDate, ExpiryDate = expiryDate, Notes = notes,
+                CreatedByUserId = Auth.CurrentUser!.Id, CreatedByUsername = Auth.CurrentUser.Username
+            });
+            var m = materials.FirstOrDefault(x => x.Id == selId);
+            ok = $"✅ {UnitSet.N(qty)} {selectedUnit} [{m?.Code}] {m?.Name} در تاریخ {entryDate.ToShamsi()} ثبت شد";
+            materials = await Warehouse.GetMaterialsAsync();
+            entries = await Warehouse.GetEntriesAsync();
+            ApplyFilter();
+            Reset(keepMessage: true);
+        }
+        catch (Exception ex) { err = $"❌ {ex.Message}"; }
+        finally { busy = false; }
     }
 
-    void Reset()
+    void Reset() => Reset(false);
+    void Reset(bool keepMessage)
     {
-        selId = 0; qty = 0; price = 0; basePrice = 0; total = 0; selectedMaterial = null; materialUnits = new(); selectedUnit = ""; materialSearch = "";
+        selId = 0; qty = 0; total = 0; units = null; selectedUnit = "";
         entryDate = DateTime.Today; expiryDate = DateTime.Today.AddMonths(6); notes = "";
+        if (!keepMessage) { ok = ""; err = ""; }
     }
 
     async Task StartEdit(StockEntry e)
     {
         editEntry   = e;
-        eQty        = e.EnteredQuantity;
-        eUnit       = e.EnteredUnitName;
-        editUnits   = await Warehouse.GetMaterialUnitsAsync(e.MaterialId);
-        ePrice      = e.PricePerUnit;
-        RecalcEditBasePrice();
+        editUnits   = await Warehouse.GetUnitSetAsync(e.MaterialId);
+        eQty        = e.EnteredQuantity > 0 ? e.EnteredQuantity : e.Quantity;
+        eUnit       = editUnits.Has(e.EnteredUnitName) ? e.EnteredUnitName : editUnits.StockUnit;
+        eTotal      = e.TotalPrice > 0 ? e.TotalPrice : Math.Round(e.Quantity * e.PricePerUnit, 0);
         eEntryDate  = e.EntryDate;
         eExpiryDate = e.ExpiryDate;
         eNotes      = e.Notes;
@@ -258,30 +267,27 @@ else
     {
         editErr = "";
         if (eQty <= 0) { editErr = "مقدار باید بیشتر از صفر باشد"; return; }
-        if (Auth.CanViewPrice && ePrice <= 0) { editErr = "قیمت باید بیشتر از صفر باشد"; return; }
-
-        editEntry!.EnteredQuantity=eQty;editEntry.EnteredUnitName=eUnit;editEntry.Quantity=eQty;
-        editEntry.PricePerUnit = ePrice;
-        editEntry.EntryDate    = eEntryDate;
-        editEntry.ExpiryDate   = eExpiryDate;
-        editEntry.Notes        = eNotes;
-
-        await Warehouse.UpdateStockEntryAsync(editEntry);
-
-        editMode  = false;
-        editEntry = null;
-        entries = await Warehouse.GetEntriesAsync();
-        ApplyFilter();
-        ok = "✅ ورودی با موفقیت ویرایش شد";
+        if (Auth.CanViewPrice && eTotal <= 0) { editErr = "مبلغ کل را وارد کنید"; return; }
+        busy = true;
+        try
+        {
+            await Warehouse.UpdateStockEntryAsync(new StockEntry
+            {
+                Id = editEntry!.Id, EnteredQuantity = eQty, EnteredUnitName = eUnit, TotalPrice = Auth.CanViewPrice ? eTotal : editEntry.TotalPrice,
+                EntryDate = eEntryDate, ExpiryDate = eExpiryDate, Notes = eNotes,
+                CreatedByUserId = Auth.CurrentUser!.Id, CreatedByUsername = Auth.CurrentUser.Username
+            });
+            editMode = false; editEntry = null;
+            entries = await Warehouse.GetEntriesAsync();
+            ApplyFilter();
+            ok = "✅ ورودی با موفقیت ویرایش شد";
+        }
+        catch (Exception ex) { editErr = $"❌ {ex.Message}"; }
+        finally { busy = false; }
     }
 
     void ApplyFilter()
     {
-        filteredEntries = string.IsNullOrWhiteSpace(searchEntries)
-            ? entries
-            : entries.Where(en =>
-                (en.Material?.Name?.Contains(searchEntries, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (en.Material?.Code?.Contains(searchEntries, StringComparison.OrdinalIgnoreCase) ?? false))
-              .ToList();
+        filteredEntries = entries.Where(en => TextSearch.Matches(searchEntries, en.Material?.Name, en.Material?.Code)).Take(300).ToList();
     }
 }

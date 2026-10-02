@@ -34,8 +34,8 @@
                     <tr class="@(e.ExpiryDate<DateTime.Now?"row-warning":"")">
                         <td><code>@e.Material?.Code</code></td>
                         <td>@e.Material?.Name</td>
-                        <td>@e.EnteredQuantity.ToString("N3") @e.EnteredUnitName <small class="text-muted">= @e.Quantity.ToString("N3") @e.Material?.BaseUnitName</small></td>
-                        @if (Auth.CanViewPrice) { <td>@e.PricePerUnit.ToString("N0") ﷼</td> }
+                        <td>@UnitSet.N(e.EnteredQuantity) @e.EnteredUnitName @if (!UnitSet.Same(e.EnteredUnitName, e.Material?.StockUnitName)) {<small class="text-muted">= @UnitSet.N(e.Quantity) @e.Material?.StockUnitName</small>}</td>
+                        @if (Auth.CanViewPrice) { <td>@e.PricePerUnit.ToString("N0") ﷼ <small class="text-muted">/ @e.Material?.StockUnitName</small></td> }
                         <td>@e.EntryDate.ToShamsi()</td>
                         <td class="@(e.ExpiryDate<DateTime.Now?"expired":e.ExpiryDate<DateTime.Now.AddDays(7)?"expiring":"")">
                             @e.ExpiryDate.ToShamsi()
@@ -58,7 +58,7 @@ else
                     <tr>
                         <td><code>@w.Material?.Code</code></td>
                         <td>@w.Material?.Name</td>
-                        <td>@w.EnteredQuantity.ToString("N3") @w.EnteredUnitName <small class="text-muted">= @w.Quantity.ToString("N3") @w.Material?.BaseUnitName</small></td>
+                        <td>@UnitSet.N(w.EnteredQuantity) @w.EnteredUnitName @if (!UnitSet.Same(w.EnteredUnitName, w.Material?.StockUnitName)) {<small class="text-muted">= @UnitSet.N(w.Quantity) @w.Material?.StockUnitName</small>}</td>
                         <td>@w.Department</td>
                         <td>@w.WithdrawalDate.ToShamsi()</td>
                         <td>@w.CreatedByUsername</td>
@@ -89,9 +89,9 @@ else
         var csv = new System.Text.StringBuilder();
         if (tab=="entries")
         {
-            csv.AppendLine("کد,ماده,مقدار,واحد,قیمت,تاریخ ورود,تاریخ انقضا,ثبت‌کننده");
+            csv.AppendLine("کد,ماده,مقدار,واحد,مبلغ کل,تاریخ ورود,تاریخ انقضا,ثبت‌کننده");
             foreach (var e in entries)
-                csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.EnteredQuantity},{e.EnteredUnitName},{e.PricePerUnit},{e.EntryDate.ToShamsi()},{e.ExpiryDate.ToShamsi()},{e.CreatedByUsername}");
+                csv.AppendLine($"{e.Material?.Code},{e.Material?.Name},{e.EnteredQuantity},{e.EnteredUnitName},{e.TotalPrice},{e.EntryDate.ToShamsi()},{e.ExpiryDate.ToShamsi()},{e.CreatedByUsername}");
         }
         else
         {
