@@ -1,0 +1,111 @@
+@using WarehouseApp.Models
+@using WarehouseApp.Services
+@inject WarehouseService Service
+@inject AuthService Auth
+@inject IJSRuntime JS
+
+<div class="page-header"><h2>🪑 اموال و اثاثیه</h2></div>
+
+<div class="tabs">
+    <button class="tab @(tab=="list"?"active":"")" @onclick='()=>SetTab("list")'>📋 فهرست اموال</button>
+    <button class="tab @(tab=="in"?"active":"")" @onclick='()=>SetTab("in")'>⬆️ ورود اموال</button>
+    <button class="tab @(tab=="out"?"active":"")" @onclick='()=>SetTab("out")'>⬇️ خروج اموال</button>
+</div>
+
+@if (!string.IsNullOrEmpty(message)) { <div class="alert @(success?"alert-success":"alert-error")">@message</div> }
+
+@if (tab == "in")
+{
+    <div class="form-card @(form.Id>0?"edit-card":"")">
+        <h3>@(form.Id>0 ? "✏️ ویرایش / تجدید ارزیابی اموال" : "ثبت اموال جدید")</h3>
+        <div class="form-grid">
+            <div class="form-group"><label>نام اموال *</label><input class="form-input" @bind="form.Name" placeholder="مثال: لیوان کافه، قالب تارت" /></div>
+            <div class="form-group"><label>تعداد *</label><input class="form-input" type="number" step="1" min="0" @bind="form.Quantity" @bind:after="RecalcTotal" /></div>
+            <div class="form-group"><label>فی (ریال) *</label><input class="form-input" type="number" min="0" @bind="form.UnitPrice" @bind:after="RecalcTotal" /></div>
+            <div class="form-group"><label>قیمت کل (ریال)</label><input class="form-input" type="number" min="0" @bind="total" @bind:after="RecalcFromTotal" /><small class="total-hint">تعداد × فی؛ با وارد کردن قیمت کل، فی خودکار محاسبه می‌شود</small></div>
+            <div class="form-group"><label>محل نگهداری *</label><select class="form-input" @bind="form.Location"><option value="">انتخاب کنید...</option>@foreach(var l in locations){<option value="@l">@l</option>}</select></div>
+            <div class="form-group"><label>تاریخ خرید</label><PersianDatePicker Value="@form.PurchaseDate" ValueChanged="@(d => form.PurchaseDate = d)" /></div>
+            <div class="form-group"><label>توضیحات</label><input class="form-input" @bind="form.Notes" /></div>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="SaveAsset">💾 @(form.Id>0?"ذخیره تغییرات":"ثبت ورود")</button>
+            <button class="btn btn-secondary" @onclick="NewAsset">@(form.Id>0?"انصراف":"پاک کردن")</button>
+        </div>
+    </div>
+}
+else if (tab == "out")
+{
+    <div class="form-card @(disposal.Id>0?"edit-card":"")">
+        <h3>@(disposal.Id>0 ? "✏️ ویرایش خروج اموال" : "ثبت خروج اموال (خراب یا غیرقابل استفاده)")</h3>
+        <div class="form-grid">
+            @if (disposal.Id == 0)
+            {
+                <div class="form-group"><label>جستجو</label><input class="form-input" @bind="assetSearch" @bind:event="oninput" placeholder="🔍 نام اموال..." /></div>
+                <div class="form-group"><label>اموال *</label><select class="form-input" @bind="disposal.AssetId"><option value="0">انتخاب کنید...</option>@foreach(var a in assets.Where(x=>x.Quantity>0&&(string.IsNullOrWhiteSpace(assetSearch)||x.Name.Contains(assetSearch,StringComparison.OrdinalIgnoreCase)||x.Id==disposal.AssetId))){<option value="@a.Id">@a.Name — @a.Location (موجود: @a.Quantity.ToString("0.###"))</option>}</select></div>
+            }
+            else
+            {
+                <div class="form-group"><label>اموال</label><input class="form-input" disabled value="@assets.FirstOrDefault(x=>x.Id==disposal.AssetId)?.Name" /></div>
+            }
+            <div class="form-group"><label>تعداد خروج *</label><input class="form-input" type="number" step="1" min="0" @bind="disposal.Quantity" /></div>
+            <div class="form-group"><label>تاریخ خروج</label><PersianDatePicker Value="@disposal.DisposalDate" ValueChanged="@(d => disposal.DisposalDate = d)" /></div>
+            <div class="form-group"><label>علت خروج</label><input class="form-input" @bind="disposal.Reason" placeholder="مثال: شکستگی، خرابی" /></div>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="SaveDisposal">💾 @(disposal.Id>0?"ذخیره تغییرات":"ثبت خروج")</button>
+            <button class="btn btn-secondary" @onclick="NewDisposal">@(disposal.Id>0?"انصراف":"پاک کردن")</button>
+        </div>
+    </div>
+
+    <div class="section-title">سوابق خروج اموال</div>
+    <div class="table-responsive"><table class="data-table">
+        <thead><tr><th>اموال</th><th>محل</th><th>تعداد</th><th>ارزش (به فی فعلی)</th><th>تاریخ</th><th>علت</th><th>ثبت‌کننده</th>@if(Auth.IsManager){<th></th>}</tr></thead>
+        <tbody>@foreach(var d in disposals){<tr><td>@d.Asset?.Name</td><td>@d.Asset?.Location</td><td>@d.Quantity.ToString("0.###")</td><td>@((d.Quantity*(d.Asset?.UnitPrice??0)).ToString("N0")) ﷼</td><td>@d.DisposalDate.ToShamsi()</td><td>@d.Reason</td><td>@d.CreatedByUsername</td>@if(Auth.IsManager){<td><div class="table-actions"><button class="btn-icon" title="ویرایش" @onclick="()=>EditDisposal(d)">✏️</button><button class="btn-icon" title="حذف" @onclick="()=>DeleteDisposal(d)">🗑️</button></div></td>}</tr>}</tbody>
+    </table></div>
+}
+else
+{
+    <div class="stats-grid">
+        <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-info"><div class="stat-value">@FilteredAssets.Sum(x=>x.TotalPrice).ToString("N0") ﷼</div><div class="stat-label">ارزش کل اموال@(string.IsNullOrEmpty(locationFilter)?"":$" ({locationFilter})")</div></div></div>
+        <div class="stat-card blue"><div class="stat-icon">🪑</div><div class="stat-info"><div class="stat-value">@FilteredAssets.Count(x=>x.Quantity>0)</div><div class="stat-label">قلم اموال</div></div></div>
+        <div class="stat-card orange"><div class="stat-icon">🔢</div><div class="stat-info"><div class="stat-value">@FilteredAssets.Sum(x=>x.Quantity).ToString("0.###")</div><div class="stat-label">تعداد کل</div></div></div>
+    </div>
+    <div class="search-bar list-filters">
+        <input class="form-input search-input" @bind="listSearch" @bind:event="oninput" placeholder="🔍 جستجوی نام اموال..." />
+        <select class="form-input period-select" @bind="locationFilter"><option value="">همه‌ی محل‌ها</option>@foreach(var l in locations){<option value="@l">@l</option>}</select>
+        <button class="btn btn-success btn-sm" @onclick="Export">📥 CSV</button>
+    </div>
+    <div class="table-responsive"><table class="data-table">
+        <thead><tr><th>نام</th><th>محل</th><th>تعداد</th><th>فی</th><th>قیمت کل</th><th>تاریخ خرید</th><th>توضیحات</th>@if(Auth.IsManager){<th></th>}</tr></thead>
+        <tbody>@foreach(var a in FilteredAssets){<tr class="@(a.Quantity==0?"row-muted":"")"><td><strong>@a.Name</strong></td><td>@a.Location</td><td>@a.Quantity.ToString("0.###")</td><td>@a.UnitPrice.ToString("N0") ﷼</td><td>@a.TotalPrice.ToString("N0") ﷼</td><td>@a.PurchaseDate.ToShamsi()</td><td>@a.Notes</td>@if(Auth.IsManager){<td><div class="table-actions"><button class="btn-icon" title="ویرایش / تجدید ارزیابی" @onclick="()=>EditAsset(a)">✏️</button><button class="btn-icon" title="حذف" @onclick="()=>DeleteAsset(a)">🗑️</button></div></td>}</tr>}</tbody>
+        <tfoot><tr><th colspan="4">جمع</th><th>@FilteredAssets.Sum(x=>x.TotalPrice).ToString("N0") ﷼</th><th colspan="@(Auth.IsManager?3:2)"></th></tr></tfoot>
+    </table></div>
+}
+
+@code {
+    string tab="list", message="", listSearch="", locationFilter="", assetSearch=""; bool success;
+    List<Asset> assets=new(); List<AssetDisposal> disposals=new(); List<string> locations=new();
+    Asset form=new(); decimal total; AssetDisposal disposal=new();
+    IEnumerable<Asset> FilteredAssets=>assets.Where(x=>(string.IsNullOrWhiteSpace(listSearch)||x.Name.Contains(listSearch,StringComparison.OrdinalIgnoreCase))&&(string.IsNullOrEmpty(locationFilter)||x.Location==locationFilter));
+
+    protected override async Task OnInitializedAsync(){locations=await Service.GetAssetLocationsAsync();await Load();}
+    async Task Load(){assets=await Service.GetAssetsAsync();disposals=await Service.GetAssetDisposalsAsync();}
+    void SetTab(string t){tab=t;message="";}
+    void RecalcTotal()=>total=Math.Round(form.Quantity*form.UnitPrice,0);
+    void RecalcFromTotal(){if(form.Quantity>0)form.UnitPrice=Math.Round(total/form.Quantity,2);}
+    void NewAsset(){form=new Asset();total=0;}
+    void EditAsset(Asset a){form=new Asset{Id=a.Id,Name=a.Name,Location=a.Location,Quantity=a.Quantity,UnitPrice=a.UnitPrice,PurchaseDate=a.PurchaseDate,Notes=a.Notes};RecalcTotal();tab="in";message="";}
+    async Task SaveAsset(){try{var editing=form.Id>0;await Service.SaveAssetAsync(form,Auth.CurrentUser!.Username);success=true;message=editing?$"✅ «{form.Name}» ویرایش شد":$"✅ «{form.Name}» به اموال اضافه شد";NewAsset();await Load();locations=await Service.GetAssetLocationsAsync();}catch(Exception ex){success=false;message=$"❌ {ex.Message}";}}
+    async Task DeleteAsset(Asset a){if(!await JS.InvokeAsync<bool>("confirm",$"«{a.Name}» و سوابق خروج آن حذف شود؟"))return;await Service.DeleteAssetAsync(a.Id);success=true;message=$"«{a.Name}» حذف شد";await Load();}
+    void NewDisposal(){disposal=new AssetDisposal();}
+    void EditDisposal(AssetDisposal d){disposal=new AssetDisposal{Id=d.Id,AssetId=d.AssetId,Quantity=d.Quantity,DisposalDate=d.DisposalDate,Reason=d.Reason};message="";}
+    async Task SaveDisposal(){try{await Service.SaveAssetDisposalAsync(disposal,Auth.CurrentUser!.Username);success=true;message="✅ خروج اموال ثبت شد";NewDisposal();await Load();}catch(Exception ex){success=false;message=$"❌ {ex.Message}";}}
+    async Task DeleteDisposal(AssetDisposal d){if(!await JS.InvokeAsync<bool>("confirm","این خروج حذف شود و تعداد به اموال برگردد؟"))return;await Service.DeleteAssetDisposalAsync(d.Id);success=true;message="خروج حذف شد";await Load();}
+    async Task Export()
+    {
+        var b=new System.Text.StringBuilder("نام,محل,تعداد,فی,قیمت کل,تاریخ خرید,توضیحات\n");
+        foreach(var a in FilteredAssets)b.AppendLine($"{a.Name.Replace(',',' ')},{a.Location},{a.Quantity},{a.UnitPrice},{a.TotalPrice},{a.PurchaseDate.ToShamsi()},{a.Notes.Replace(',',' ')}");
+        var bytes=System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(b.ToString())).ToArray();
+        await JS.InvokeVoidAsync("downloadFile",Convert.ToBase64String(bytes),"assets.csv");
+    }
+}

@@ -107,6 +107,10 @@ BEGIN
     ALTER TABLE [StockWithdrawals] ADD [WarehouseId] int NULL;
     ALTER TABLE [StockWithdrawals] ADD CONSTRAINT [FK_StockWithdrawals_Warehouses] FOREIGN KEY ([WarehouseId]) REFERENCES [Warehouses]([Id]);
 END;
+IF OBJECT_ID(N'[Assets]',N'U') IS NULL
+ CREATE TABLE [Assets]([Id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_Assets] PRIMARY KEY,[Name] nvarchar(300) NOT NULL,[Location] nvarchar(200) NOT NULL CONSTRAINT [DF_Assets_Location] DEFAULT N'',[Quantity] decimal(18,3) NOT NULL,[UnitPrice] decimal(18,2) NOT NULL,[PurchaseDate] datetime2 NOT NULL,[Notes] nvarchar(max) NOT NULL CONSTRAINT [DF_Assets_Notes] DEFAULT N'',[CreatedAt] datetime2 NOT NULL CONSTRAINT [DF_Assets_Created] DEFAULT SYSUTCDATETIME(),[CreatedByUsername] nvarchar(200) NOT NULL CONSTRAINT [DF_Assets_CreatedBy] DEFAULT N'');
+IF OBJECT_ID(N'[AssetDisposals]',N'U') IS NULL
+ CREATE TABLE [AssetDisposals]([Id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_AssetDisposals] PRIMARY KEY,[AssetId] int NOT NULL,[Quantity] decimal(18,3) NOT NULL,[DisposalDate] datetime2 NOT NULL,[Reason] nvarchar(max) NOT NULL CONSTRAINT [DF_AssetDisposals_Reason] DEFAULT N'',[CreatedAt] datetime2 NOT NULL CONSTRAINT [DF_AssetDisposals_Created] DEFAULT SYSUTCDATETIME(),[CreatedByUsername] nvarchar(200) NOT NULL CONSTRAINT [DF_AssetDisposals_CreatedBy] DEFAULT N'',CONSTRAINT [FK_AssetDisposals_Assets] FOREIGN KEY([AssetId]) REFERENCES [Assets]([Id]) ON DELETE CASCADE);
 """);
 
         db.Database.ExecuteSqlRaw("""
@@ -140,7 +144,7 @@ BEGIN
 END;
 
 DECLARE @pages TABLE([PageKey] nvarchar(100));
-INSERT INTO @pages VALUES (N'dashboard'),(N'materials'),(N'archive'),(N'warehouses'),(N'unit-config'),(N'definitions'),(N'entry'),(N'withdrawal'),(N'transfer'),(N'warehouse-stock'),(N'cardex'),(N'history'),(N'prices'),(N'recipes'),(N'alerts'),(N'users');
+INSERT INTO @pages VALUES (N'dashboard'),(N'materials'),(N'archive'),(N'warehouses'),(N'unit-config'),(N'definitions'),(N'entry'),(N'withdrawal'),(N'transfer'),(N'warehouse-stock'),(N'cardex'),(N'history'),(N'prices'),(N'recipes'),(N'alerts'),(N'users'),(N'assets');
 DECLARE @roles TABLE([Role] int); INSERT INTO @roles VALUES(0),(1),(2),(3),(4);
 INSERT INTO [RolePagePermissions]([Role],[PageKey],[IsAllowed])
 SELECT r.[Role],p.[PageKey],CASE
@@ -214,6 +218,14 @@ BEGIN
  DELETE w FROM [Warehouses] w JOIN @warehouseMap map ON map.[SourceId]=w.[Id];
  INSERT INTO [AppDataMigrations] VALUES(N'merge-duplicate-warehouses-v2',SYSUTCDATETIME());
 END;
+
+-- Materials created without unit conversions get their stock unit and base unit so entry/withdrawal can pick a unit.
+INSERT INTO [MaterialUnitConversions]([MaterialId],[UnitName],[FactorToBaseUnit],[IsLegacyStockUnit],[IsActive])
+SELECT m.[Id],u.[Name],CASE WHEN m.[BaseQuantity]>0 THEN m.[BaseQuantity] ELSE 1 END,1,1 FROM [Materials] m JOIN [Units] u ON u.[Id]=m.[UnitId]
+WHERE u.[Name]<>N'' AND NOT EXISTS(SELECT 1 FROM [MaterialUnitConversions] c WHERE c.[MaterialId]=m.[Id] AND (c.[IsActive]=1 OR c.[UnitName]=u.[Name]));
+INSERT INTO [MaterialUnitConversions]([MaterialId],[UnitName],[FactorToBaseUnit],[IsLegacyStockUnit],[IsActive])
+SELECT m.[Id],m.[BaseUnitName],1,CASE WHEN EXISTS(SELECT 1 FROM [MaterialUnitConversions] c WHERE c.[MaterialId]=m.[Id] AND c.[IsLegacyStockUnit]=1) THEN 0 ELSE 1 END,1 FROM [Materials] m
+WHERE m.[BaseUnitName]<>N'' AND NOT EXISTS(SELECT 1 FROM [MaterialUnitConversions] c WHERE c.[MaterialId]=m.[Id] AND c.[UnitName]=m.[BaseUnitName]);
 COMMIT TRANSACTION;
 END TRY
 BEGIN CATCH

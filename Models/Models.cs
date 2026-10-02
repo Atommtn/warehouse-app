@@ -225,3 +225,30 @@ public class MaterialUnitConversion
     public bool IsLegacyStockUnit { get; set; }
     public bool IsActive { get; set; } = true;
 }
+
+public class Asset
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Location { get; set; } = "";
+    public decimal Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public DateTime PurchaseDate { get; set; } = DateTime.Today;
+    public string Notes { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string CreatedByUsername { get; set; } = "";
+    public List<AssetDisposal> Disposals { get; set; } = new();
+    public decimal TotalPrice => Quantity * UnitPrice;
+}
+
+public class AssetDisposal
+{
+    public int Id { get; set; }
+    public int AssetId { get; set; }
+    public Asset? Asset { get; set; }
+    public decimal Quantity { get; set; }
+    public DateTime DisposalDate { get; set; } = DateTime.Today;
+    public string Reason { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string CreatedByUsername { get; set; } = "";
+}

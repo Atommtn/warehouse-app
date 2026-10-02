@@ -67,6 +67,7 @@
                     @if (alertCount > 0) { <span class="badge">@alertCount</span> }
                 </button>
             </li>}
+            @if(Auth.CanAccess("assets")){<li class="@A("assets")"><button @onclick='()=>Go("assets")'>🪑 اموال و اثاثیه</button></li>}
             @if (Auth.IsAdmin)
             {
                 <li class="nav-divider"></li>
@@ -95,6 +96,7 @@
         else if  (page == "prices" && Auth.CanAccess(page))          { <PriceAnalysisPage /> }
         else if  (page == "recipes" && Auth.CanAccess(page))         { <RecipePage /> }
         else if  (page == "alerts" && Auth.CanAccess(page))          { <AlertsPage /> }
+        else if  (page == "assets" && Auth.CanAccess(page))          { <AssetsPage /> }
         else if  (page == "users"      && Auth.IsAdmin)      { <UsersPage /> }
     </main>
 </div>

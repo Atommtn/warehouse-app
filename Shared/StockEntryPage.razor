@@ -20,7 +20,7 @@
             </div>
             <div class="form-group">
                 <label>مقدار *</label>
-                <input @bind="qty" type="number" step="0.01" class="form-input" />
+                <input @bind="qty" @bind:after="RecalcTotal" type="number" step="0.01" class="form-input" />
             </div>
             <div class="form-group"><label>واحد ورود *</label><select class="form-input" @bind="selectedUnit" @bind:after="RecalcPrice"><option value="">انتخاب کنید...</option>@foreach(var u in materialUnits){<option value="@u.UnitName">@u.UnitName (هر ۱ @u.UnitName = @u.FactorToBaseUnit.ToString("0.###") @selectedMaterial?.BaseUnitName)</option>}</select></div>
             @if (Auth.CanViewPrice)
@@ -32,7 +32,11 @@
                 <div class="form-group">
                     <label>قیمت هر @selectedUnit (ریال) *</label>
                     <input @bind="price" @bind:after="RecalcBasePrice" type="number" class="form-input" />
-                    @if (qty > 0 && price > 0) { <small class="text-muted">جمع: @((qty * price).ToString("N0")) ریال</small> }
+                </div>
+                <div class="form-group">
+                    <label>مبلغ کل (ریال)</label>
+                    <input @bind="total" @bind:after="RecalcFromTotal" type="number" class="form-input" />
+                    <small class="total-hint">مقدار × فی؛ اگر مبلغ کل را وارد کنید، فی خودکار محاسبه می‌شود</small>
                 </div>
             }
             <div class="form-group">
@@ -115,7 +119,7 @@ else
             <thead>
                 <tr>
                     <th>انبار</th><th>کد</th><th>ماده</th><th>مقدار</th>
-                    @if (Auth.CanViewPrice) { <th>قیمت واحد</th> }
+                    @if (Auth.CanViewPrice) { <th>قیمت واحد</th><th>مبلغ کل</th> }
                     <th>تاریخ ورود</th><th>تاریخ انقضا</th><th>ثبت‌کننده</th>
                     @if (Auth.IsManager) { <th></th> }
                 </tr>
@@ -134,6 +138,7 @@ else
                                 @e.PricePerUnit.ToString("N0") ﷼
                                 @if (e.PricePerUnit < 100000) { <span title="قیمت کمتر از ۱۰۰٬۰۰۰ ریال؛ نیازمند تأیید یا اصلاح">⚠️</span> }
                             </td>
+                            <td>@((e.EnteredQuantity * e.PricePerUnit).ToString("N0")) ﷼</td>
                         }
                         <td>@e.EntryDate.ToShamsi()</td>
                         <td class="@(e.ExpiryDate < DateTime.Now ? "expired" : e.ExpiryDate < DateTime.Now.AddDays(7) ? "expiring" : "")">
@@ -167,7 +172,7 @@ else
     List<StockEntry> entries = new();
     List<StockEntry> filteredEntries = new();
 
-    int selId = 0; decimal qty = 0, price = 0, basePrice = 0;string selectedUnit="";Material? selectedMaterial;List<MaterialUnitConversion> materialUnits=new();
+    int selId = 0; decimal qty = 0, price = 0, basePrice = 0, total = 0;string selectedUnit="";Material? selectedMaterial;List<MaterialUnitConversion> materialUnits=new();
     string notes = "", ok = "", err = "", materialSearch = "";
     IEnumerable<Material> FilteredMaterials => string.IsNullOrWhiteSpace(materialSearch) ? materials : materials.Where(x => x.Id == selId || x.Name.Contains(materialSearch, StringComparison.OrdinalIgnoreCase) || x.Code.Contains(materialSearch, StringComparison.OrdinalIgnoreCase));
     DateTime entryDate = DateTime.Today, expiryDate = DateTime.Today.AddMonths(6);
@@ -190,8 +195,10 @@ else
     async Task OnMaterialChange(ChangeEventArgs e){selId=int.TryParse(e.Value?.ToString(),out var id)?id:0;selectedMaterial=materials.FirstOrDefault(x=>x.Id==selId);materialUnits=selId>0?await Warehouse.GetMaterialUnitsAsync(selId):new();selectedUnit=materialUnits.FirstOrDefault(x=>x.IsLegacyStockUnit)?.UnitName??materialUnits.FirstOrDefault()?.UnitName??"";RecalcPrice();}
 
     static decimal Factor(List<MaterialUnitConversion> units,string unit)=>units.FirstOrDefault(x=>x.UnitName==unit)?.FactorToBaseUnit is decimal f&&f>0?f:1;
-    void RecalcPrice(){if(basePrice>0)price=Math.Round(basePrice*Factor(materialUnits,selectedUnit),0);}
-    void RecalcBasePrice()=>basePrice=Math.Round(price/Factor(materialUnits,selectedUnit),2);
+    void RecalcPrice(){if(basePrice>0)price=Math.Round(basePrice*Factor(materialUnits,selectedUnit),0);RecalcTotal();}
+    void RecalcTotal()=>total=Math.Round(qty*price,0);
+    void RecalcFromTotal(){if(qty>0){price=Math.Round(total/qty,2);RecalcBasePrice();}}
+    void RecalcBasePrice(){basePrice=Math.Round(price/Factor(materialUnits,selectedUnit),2);total=Math.Round(qty*price,0);}
     void RecalcEditPrice(){if(eBasePrice>0)ePrice=Math.Round(eBasePrice*Factor(editUnits,eUnit),0);}
     void RecalcEditBasePrice()=>eBasePrice=Math.Round(ePrice/Factor(editUnits,eUnit),2);
 
@@ -225,7 +232,7 @@ else
 
     void Reset()
     {
-        selId = 0; qty = 0; price = 0; basePrice = 0; selectedMaterial = null; materialUnits = new(); selectedUnit = ""; materialSearch = "";
+        selId = 0; qty = 0; price = 0; basePrice = 0; total = 0; selectedMaterial = null; materialUnits = new(); selectedUnit = ""; materialSearch = "";
         entryDate = DateTime.Today; expiryDate = DateTime.Today.AddMonths(6); notes = "";
     }
 

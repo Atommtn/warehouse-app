@@ -14,8 +14,9 @@
     <button class="tab @(tab=="withdrawals"?"active":"")" @onclick='()=>tab="withdrawals"'>خروجی‌ها (@withdrawals.Count)</button>
 </div>
 
-<div class="search-bar">
+<div class="search-bar list-filters">
     <input value="@search" @oninput="OnSearch" class="form-input search-input" placeholder="🔍 جستجو..." />
+    <select class="form-input period-select" value="@period" @onchange="OnPeriodChange">@foreach(var p in PeriodFilter.Options){<option value="@p.Key">@p.Label</option>}</select>
 </div>
 
 @if (tab == "entries")
@@ -75,12 +76,13 @@ else
 }
 
 @code {
-    string tab="entries", search="";
+    string tab="entries", search="", period="month";
     List<StockEntry> entries=new(); List<StockWithdrawal> withdrawals=new();
 
     protected override async Task OnInitializedAsync() => await Load();
     async Task OnSearch(ChangeEventArgs e) { search=e.Value?.ToString()??""; await Load(); }
-    async Task Load() { entries=await Warehouse.GetEntriesAsync(search:search); withdrawals=await Warehouse.GetWithdrawalsAsync(search:search); }
+    async Task OnPeriodChange(ChangeEventArgs e) { period=e.Value?.ToString()??"month"; await Load(); }
+    async Task Load() { var from=PeriodFilter.Start(period); entries=await Warehouse.GetEntriesAsync(search:search,from:from); withdrawals=await Warehouse.GetWithdrawalsAsync(search:search,from:from); }
 
     async Task ExportCsv()
     {

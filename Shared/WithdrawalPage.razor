@@ -46,13 +46,33 @@
     </div>
 </div>
 
-<div class="section-title">آخرین خروجی‌ها</div>
-<div class="search-bar">
+@if (editing != null)
+{
+    <div class="form-card edit-card">
+        <h3>✏️ ویرایش خروج — [@editing.Material?.Code] @editing.Material?.Name (@editing.Warehouse?.Name)</h3>
+        <div class="form-grid">
+            <div class="form-group"><label>مقدار *</label><input @bind="eQty" type="number" step="0.001" class="form-input" /></div>
+            <div class="form-group"><label>واحد خروج *</label><select class="form-input" @bind="eUnit">@foreach(var u in editUnits){<option value="@u.UnitName">@u.UnitName</option>}</select></div>
+            <div class="form-group"><label>تاریخ خروج *</label><PersianDatePicker Value="@eDate" ValueChanged="@(d => eDate = d)" /></div>
+            <div class="form-group"><label>مصرف در بخش *</label><input @bind="eDepartment" list="withdrawal-departments" class="form-input" /></div>
+            <div class="form-group"><label>دلیل خروج</label><input @bind="eReason" class="form-input" /></div>
+        </div>
+        @if (!string.IsNullOrEmpty(editErr)) { <div class="alert alert-error">@editErr</div> }
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="SaveEdit">💾 ذخیره تغییرات</button>
+            <button class="btn btn-secondary" @onclick="()=>editing=null">انصراف</button>
+        </div>
+    </div>
+}
+
+<div class="section-title">خروجی‌ها</div>
+<div class="search-bar list-filters">
     <input value="@withdrawalSearch" @oninput="OnWithdrawalSearch" class="form-input search-input" placeholder="🔍 جستجو در خروجی‌ها بر اساس نام یا کد ماده یا بخش..." />
+    <select class="form-input period-select" value="@period" @onchange="OnPeriodChange">@foreach(var p in PeriodFilter.Options){<option value="@p.Key">@p.Label</option>}</select>
 </div>
 <div class="table-responsive">
     <table class="data-table">
-        <thead><tr><th>انبار</th><th>کد</th><th>ماده</th><th>مقدار</th><th>بخش مصرف‌کننده</th><th>تاریخ</th><th>کاربر</th><th>وضعیت</th></tr></thead>
+        <thead><tr><th>انبار</th><th>کد</th><th>ماده</th><th>مقدار</th><th>بخش مصرف‌کننده</th><th>تاریخ</th><th>کاربر</th><th>وضعیت</th>@if(Auth.IsManager){<th></th>}</tr></thead>
         <tbody>
             @foreach (var w in withdrawals)
             {
@@ -69,6 +89,7 @@
                         else if (w.Status == WithdrawalStatus.Approved) { <span class="status-badge ok">تایید</span> }
                         else { <span class="status-badge danger">رد شد</span> }
                     </td>
+                    @if (Auth.IsManager) { <td><button class="btn-icon" @onclick="()=>StartEdit(w)" title="ویرایش">✏️</button></td> }
                 </tr>
             }
         </tbody>
@@ -80,7 +101,8 @@
     int warehouseId; decimal selectedStock;
     Material? sel; int selId=0; decimal qty=0; string reason="",department="",ok="",err="",selectedUnit="";List<MaterialUnitConversion> materialUnits=new();List<string> departments=new();
     DateTime wDate=DateTime.Today;
-    string materialSearch="", withdrawalSearch="";
+    string materialSearch="", withdrawalSearch="", period="month";
+    StockWithdrawal? editing; decimal eQty; string eUnit="", eDepartment="", eReason="", editErr=""; DateTime eDate; List<MaterialUnitConversion> editUnits=new();
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -88,7 +110,7 @@
     {
         materials = await Warehouse.GetMaterialsAsync();
         warehouses = await Warehouse.GetWarehousesAsync(); if(warehouseId==0) warehouseId=warehouses.FirstOrDefault()?.Id??0;
-        withdrawals = await Warehouse.GetWithdrawalsAsync();
+        withdrawals = await Warehouse.GetWithdrawalsAsync(search: withdrawalSearch, from: PeriodFilter.Start(period));
         var known = new[] { "تولید نان", "شیرینی‌پزی", "فروشگاه", "آشپزخانه" };
         departments = known.Union(await Warehouse.GetWithdrawalDepartmentsAsync()).ToList();
     }
@@ -111,7 +133,7 @@
     async Task OnWithdrawalSearch(ChangeEventArgs e)
     {
         withdrawalSearch = e.Value?.ToString() ?? "";
-        withdrawals = await Warehouse.GetWithdrawalsAsync(search: withdrawalSearch);
+        withdrawals = await Warehouse.GetWithdrawalsAsync(search: withdrawalSearch, from: PeriodFilter.Start(period));
     }
 
     async Task Submit()
@@ -136,4 +158,26 @@
     }
 
     void Reset() { selId=0; qty=0; sel=null; wDate=DateTime.Today; reason=""; }
+
+    async Task OnPeriodChange(ChangeEventArgs e) { period = e.Value?.ToString() ?? "month"; withdrawals = await Warehouse.GetWithdrawalsAsync(search: withdrawalSearch, from: PeriodFilter.Start(period)); }
+
+    async Task StartEdit(StockWithdrawal w)
+    {
+        editing = w; eQty = w.EnteredQuantity > 0 ? w.EnteredQuantity : w.Quantity; eUnit = w.EnteredUnitName; eDate = w.WithdrawalDate;
+        eDepartment = w.Department; eReason = w.Reason; editErr = "";
+        editUnits = await Warehouse.GetMaterialUnitsAsync(w.MaterialId);
+        if (!editUnits.Any(u => u.UnitName == eUnit)) eUnit = editUnits.FirstOrDefault()?.UnitName ?? "";
+    }
+
+    async Task SaveEdit()
+    {
+        editErr = "";
+        try
+        {
+            await Warehouse.UpdateWithdrawalAsync(new StockWithdrawal { Id = editing!.Id, EnteredQuantity = eQty, EnteredUnitName = eUnit, WithdrawalDate = eDate, Department = eDepartment, Reason = eReason }, Auth.CurrentUser!.Id, Auth.CurrentUser.Username);
+            ok = $"✅ خروج [{editing.Material?.Code}] {editing.Material?.Name} ویرایش شد"; editing = null;
+            await Load();
+        }
+        catch (Exception ex) { editErr = $"❌ {ex.Message}"; }
+    }
 }

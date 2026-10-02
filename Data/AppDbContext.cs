@@ -21,6 +21,8 @@ public class AppDbContext : DbContext
     public DbSet<InventoryTransaction> InventoryTransactions => Set<InventoryTransaction>();
     public DbSet<RolePagePermission> RolePagePermissions => Set<RolePagePermission>();
     public DbSet<MaterialUnitConversion> MaterialUnitConversions => Set<MaterialUnitConversion>();
+    public DbSet<Asset> Assets => Set<Asset>();
+    public DbSet<AssetDisposal> AssetDisposals => Set<AssetDisposal>();
 
     protected override void OnModelCreating(ModelBuilder m)
     {
@@ -66,6 +68,11 @@ public class AppDbContext : DbContext
         m.Entity<StockEntry>().Property(x=>x.ConversionFactor).HasColumnType("decimal(18,6)");
         m.Entity<StockWithdrawal>().Property(x=>x.EnteredQuantity).HasColumnType("decimal(18,3)");
         m.Entity<StockWithdrawal>().Property(x=>x.ConversionFactor).HasColumnType("decimal(18,6)");
+        m.Entity<Asset>().HasMany(x=>x.Disposals).WithOne(x=>x.Asset).HasForeignKey(x=>x.AssetId).OnDelete(DeleteBehavior.Cascade);
+        m.Entity<Asset>().Ignore(x=>x.TotalPrice);
+        m.Entity<Asset>().Property(x=>x.Quantity).HasColumnType("decimal(18,3)");
+        m.Entity<Asset>().Property(x=>x.UnitPrice).HasColumnType("decimal(18,2)");
+        m.Entity<AssetDisposal>().Property(x=>x.Quantity).HasColumnType("decimal(18,3)");
     }
 }
 
