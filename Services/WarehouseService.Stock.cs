@@ -306,7 +306,7 @@ public partial class WarehouseService
     }
 
     // ── Dashboard ──
-    public async Task<(decimal totalValue, int totalMaterials, int lowStockCount, int alertCount, int pendingCount)> GetDashboardStatsAsync()
+    public async Task<(decimal totalValue, int totalMaterials, int lowStockCount, int alertCount, int pendingCount, int invalidPriceCount)> GetDashboardStatsAsync()
     {
         await using var db = await _factory.CreateDbContextAsync();
         var materials = await db.Materials.Where(m => m.IsActive).ToListAsync();
@@ -315,7 +315,7 @@ public partial class WarehouseService
         var pendingCount = await db.StockWithdrawals.CountAsync(w => w.Status == WithdrawalStatus.Pending);
         var latest = (await db.StockEntries.OrderByDescending(x => x.EntryDate).ThenByDescending(x => x.Id).ToListAsync()).GroupBy(x => x.MaterialId).ToDictionary(g => g.Key, g => g.First().PricePerStockUnit);
         var totalValue = materials.Sum(m => m.CurrentStock * latest.GetValueOrDefault(m.Id));
-        return (totalValue, materials.Count, materials.Count(m => m.CurrentStock <= m.MinStockLevel), alerts.Count + invalidPriceCount, pendingCount);
+        return (totalValue, materials.Count, materials.Count(IsLowStock), alerts.Count, pendingCount, invalidPriceCount);
     }
 
     public async Task<MovementDashboard> GetMovementDashboardAsync(DateTime from, DateTime to, int? warehouseId = null, int? materialId = null)

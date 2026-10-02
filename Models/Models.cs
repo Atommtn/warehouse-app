@@ -274,3 +274,21 @@ public class AssetDisposal
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string CreatedByUsername { get; set; } = "";
 }
+
+/// <summary>Small key/value settings editable from the UI (SMS recipients, schedule...). Credentials never go here.</summary>
+public class AppSetting
+{
+    public string Key { get; set; } = "";
+    public string Value { get; set; } = "";
+}
+
+public class SmsLog
+{
+    public int Id { get; set; }
+    public DateTime SentAt { get; set; } = DateTime.Now;
+    public string Kind { get; set; } = "";
+    public string Recipient { get; set; } = "";
+    public string Message { get; set; } = "";
+    public bool Success { get; set; }
+    public string Response { get; set; } = "";
+}

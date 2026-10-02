@@ -17,6 +17,12 @@ builder.Services.AddDbContextFactory<AppDbContext>(options =>
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<WarehouseService>();
 builder.Services.AddScoped<PriceAnalysisService>();
+builder.Services.AddScoped<DashboardAnalyticsService>();
+builder.Services.Configure<SmsOptions>(builder.Configuration.GetSection("Sms"));
+builder.Services.AddHttpClient("sms");
+builder.Services.AddSingleton<LowStockSignal>();
+builder.Services.AddScoped<SmsService>();
+builder.Services.AddHostedService<SmsAlertWorker>();
 
 var app = builder.Build();
 

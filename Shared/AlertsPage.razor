@@ -2,11 +2,51 @@
 @using WarehouseApp.Models
 @inject WarehouseService Warehouse
 @inject AuthService Auth
+@inject SmsService Sms
 
 <div class="page-header">
     <h2>🔔 هشدارهای انبار</h2>
     <button class="btn btn-secondary" @onclick="Reload">🔄</button>
 </div>
+
+@if (Auth.IsAdmin)
+{
+    <div class="form-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+            <h3>📱 پیامک هشدار</h3>
+            @if (Sms.IsConfigured) { <span class="status-badge ok">پنل آسانک وصل است — خط @Sms.Source</span> }
+            else { <span class="status-badge danger">پنل پیامک تنظیم نشده (Sms__Username / Sms__Password / Sms__Source در فایل env)</span> }
+        </div>
+        @if (smsSettings != null)
+        {
+            <div class="form-grid">
+                <div class="form-group"><label>شماره‌های گیرنده</label><input class="form-input" @bind="recipientsText" placeholder="09121234567, 09351234567" /><small class="form-hint">با ویرگول جدا کنید</small></div>
+                <div class="form-group"><label>خلاصه‌ی روزانه</label><label class="permission-item"><input type="checkbox" @bind="smsSettings.DailyEnabled" /><span>هر روز ساعت</span></label><select class="form-input" @bind="smsSettings.DailyHour">@for (var h = 0; h < 24; h++) {<option value="@h">@h:00</option>}</select></div>
+                <div class="form-group"><label>پیامک فوری</label><label class="permission-item"><input type="checkbox" @bind="smsSettings.InstantEnabled" /><span>وقتی موجودی کالایی به حد هشدار رسید</span></label></div>
+                <div class="form-group"><label>پیشوند پیامک</label><input class="form-input" @bind="smsSettings.Prefix" maxlength="10" /></div>
+            </div>
+            <div class="info-banner">
+                راهنمای کدها: <strong>L</strong> موجودی کم، <strong>E</strong> در آستانه‌ی انقضا (۷ روز)، <strong>X</strong> منقضی‌شده؛ عدد بعد از حرف تعداد کالاهاست و بعد کد کالاها.
+                در پیامک فوری <code>01014=0.5/2</code> یعنی موجودی ۰٫۵ و حد هشدار ۲ (به واحد موجودی).<br/>
+                پیش‌نمایش خلاصه‌ی امروز: <code style="white-space:pre-wrap;direction:ltr;display:inline-block;vertical-align:top">@preview</code>
+            </div>
+            @if (!string.IsNullOrEmpty(smsMessage)) { <div class="alert @(smsOk ? "alert-success" : "alert-error")">@smsMessage</div> }
+            <div class="form-actions">
+                <button class="btn btn-primary" @onclick="SaveSms" disabled="@smsBusy">💾 ذخیره</button>
+                <button class="btn btn-secondary" @onclick="SendTest" disabled="@(smsBusy || !Sms.IsConfigured)">ارسال آزمایشی</button>
+                <button class="btn btn-secondary" @onclick="SendSummaryNow" disabled="@(smsBusy || !Sms.IsConfigured)">ارسال خلاصه همین الان</button>
+            </div>
+            @if (smsLogs.Any())
+            {
+                <details style="margin-top:.75rem"><summary>آخرین پیامک‌ها (@smsLogs.Count)</summary>
+                    <div class="table-responsive"><table class="data-table"><thead><tr><th>زمان</th><th>نوع</th><th>گیرنده</th><th>متن</th><th>نتیجه</th></tr></thead><tbody>
+                    @foreach (var l in smsLogs) { <tr><td>@l.SentAt.ToShamsiWithTime()</td><td>@l.Kind</td><td dir="ltr">@l.Recipient</td><td dir="ltr" style="white-space:pre-wrap">@l.Message</td><td>@if (l.Success) {<span class="status-badge ok">ارسال شد</span>} else {<span class="status-badge danger" title="@l.Response">خطا</span>}<br/><small class="text-muted" dir="ltr">@l.Response</small></td></tr> }
+                    </tbody></table></div>
+                </details>
+            }
+        }
+    </div>
+}
 
 <div class="search-bar">
     <input value="@search" @oninput="OnSearch" class="form-input search-input" placeholder="🔍 جستجو بر اساس نام یا کد..." />
@@ -76,7 +116,37 @@
     List<StockAlert> alerts=new(),lowStock=new(),expiring=new(),expired=new();
     List<StockEntry> invalidPrices=new(); int? editingPriceId; decimal correctPrice;
 
-    protected override async Task OnInitializedAsync() => await LoadAlerts();
+    SmsSettings? smsSettings; string recipientsText = "", preview = "", smsMessage = ""; bool smsOk, smsBusy; List<SmsLog> smsLogs = new();
+
+    protected override async Task OnInitializedAsync() { await LoadAlerts(); if (Auth.IsAdmin) await LoadSms(); }
+    async Task LoadSms()
+    {
+        smsSettings = await Sms.GetSettingsAsync(); recipientsText = string.Join(", ", smsSettings.Recipients.Select(r => r.StartsWith("98") ? "0" + r[2..] : r));
+        preview = SmsText.Daily(smsSettings.Prefix, await Warehouse.GetAlertsAsync(), SmsAlertWorker.TehranNow());
+        smsLogs = await Sms.GetLogsAsync();
+    }
+    async Task SaveSms()
+    {
+        smsBusy = true; smsMessage = "";
+        try { smsSettings!.Recipients = recipientsText.Split(new[] { ',', '،', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries).ToList(); await Sms.SaveSettingsAsync(smsSettings); await LoadSms(); smsOk = true; smsMessage = "✅ تنظیمات پیامک ذخیره شد"; }
+        catch (Exception ex) { smsOk = false; smsMessage = ex.Message; }
+        finally { smsBusy = false; }
+    }
+    async Task SendTest() => await Send($"{smsSettings!.Prefix} TEST OK", "test");
+    async Task SendSummaryNow() => await Send(preview, "daily-manual");
+    async Task Send(string text, string kind)
+    {
+        smsBusy = true; smsMessage = "";
+        try
+        {
+            if (smsSettings!.Recipients.Count == 0) throw new Exception("ابتدا شماره‌ی گیرنده را ذخیره کنید");
+            var ok = await Sms.SendAsync(smsSettings.Recipients, text, kind);
+            smsOk = ok == smsSettings.Recipients.Count; smsMessage = smsOk ? $"✅ به {ok} گیرنده ارسال شد" : $"⚠️ {ok} از {smsSettings.Recipients.Count} ارسال شد؛ جزئیات در «آخرین پیامک‌ها»";
+            smsLogs = await Sms.GetLogsAsync();
+        }
+        catch (Exception ex) { smsOk = false; smsMessage = ex.Message; }
+        finally { smsBusy = false; }
+    }
     async Task Reload() { loaded=false; await LoadAlerts(); }
     async Task OnSearch(ChangeEventArgs e) { search=e.Value?.ToString()??""; await LoadAlerts(); }
 

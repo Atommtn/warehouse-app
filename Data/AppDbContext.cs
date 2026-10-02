@@ -23,6 +23,8 @@ public class AppDbContext : DbContext
     public DbSet<MaterialUnitConversion> MaterialUnitConversions => Set<MaterialUnitConversion>();
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<AssetDisposal> AssetDisposals => Set<AssetDisposal>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    public DbSet<SmsLog> SmsLogs => Set<SmsLog>();
 
     protected override void OnModelCreating(ModelBuilder m)
     {
@@ -80,6 +82,10 @@ public class AppDbContext : DbContext
         m.Entity<Asset>().Property(x=>x.Quantity).HasColumnType("decimal(18,3)");
         m.Entity<Asset>().Property(x=>x.UnitPrice).HasColumnType("decimal(18,2)");
         m.Entity<AssetDisposal>().Property(x=>x.Quantity).HasColumnType("decimal(18,3)");
+        m.Entity<AppSetting>().HasKey(x=>x.Key);
+        m.Entity<AppSetting>().Property(x=>x.Key).HasMaxLength(100);
+        m.Entity<SmsLog>().Property(x=>x.Kind).HasMaxLength(50);
+        m.Entity<SmsLog>().Property(x=>x.Recipient).HasMaxLength(50);
     }
 }
 

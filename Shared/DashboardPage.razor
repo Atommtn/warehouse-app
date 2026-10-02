@@ -3,6 +3,7 @@
 @inject WarehouseService Warehouse
 @inject AuthService Auth
 @inject IJSRuntime JS
+@inject DashboardAnalyticsService Analytics
 
 <div class="page-header">
     <h2>📊 داشبورد انبار</h2>
@@ -14,47 +15,120 @@
 
 @if (loaded)
 {
-    <div class="form-card movement-filters"><div class="form-grid">
-        <div class="form-group"><label>از تاریخ</label><PersianDatePicker Value="reportFrom" ValueChanged="@(x=>reportFrom=x)" /></div>
-        <div class="form-group"><label>تا تاریخ</label><PersianDatePicker Value="reportTo" ValueChanged="@(x=>reportTo=x)" /></div>
-        <div class="form-group"><label>انبار</label><select class="form-input" @bind="reportWarehouseId"><option value="0">همه انبارها</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
-        <div class="form-group"><label>ماده</label><select class="form-input" @bind="reportMaterialId"><option value="0">همه مواد</option>@foreach(var m in materials){<option value="@m.Id">[@m.Code] @m.Name</option>}</select></div>
-    </div><button class="btn btn-primary" @onclick="LoadMovement">اعمال فیلتر</button></div>
-    <div class="stats-grid">
-      <div class="stat-card blue"><div class="stat-icon">⬆️</div><div class="stat-info"><div class="stat-value movement-quantity">@QuantitySummary(true)</div><div class="stat-label">حجم ورود به تفکیک واحد</div></div></div>
-      <div class="stat-card green"><div class="stat-icon">💵</div><div class="stat-info"><div class="stat-value">@movement.IncomingValue.ToString("N0") ﷼</div><div class="stat-label">مبلغ ورود</div></div></div>
-      <div class="stat-card orange"><div class="stat-icon">⬇️</div><div class="stat-info"><div class="stat-value movement-quantity">@QuantitySummary(false)</div><div class="stat-label">حجم خروج به تفکیک واحد</div></div></div>
-      <div class="stat-card red"><div class="stat-icon">💸</div><div class="stat-info"><div class="stat-value">@movement.OutgoingValue.ToString("N0") ﷼</div><div class="stat-label">مبلغ خروج</div></div></div>
-    </div>
-    <div class="section-title">گردش مواد در بازه انتخابی</div>
-    <div class="table-responsive"><table class="data-table"><thead><tr><th>کد</th><th>ماده</th><th>ورود</th><th>مبلغ ورود</th><th>خروج</th><th>مبلغ خروج</th><th>خالص گردش</th></tr></thead><tbody>@foreach(var r in movement.Rows.OrderByDescending(x=>x.IncomingValue+x.OutgoingValue)){<tr><td><code>@r.MaterialCode</code></td><td>@r.MaterialName</td><td>@r.IncomingQuantity.ToString("N3") @r.Unit</td><td>@r.IncomingValue.ToString("N0")</td><td>@r.OutgoingQuantity.ToString("N3") @r.Unit</td><td>@r.OutgoingValue.ToString("N0") @if(r.HasEstimatedOutgoingValue){<small class="status-badge warning">برآوردی</small>}</td><td>@((r.IncomingQuantity-r.OutgoingQuantity).ToString("N3"))</td></tr>}</tbody></table></div>
-    <div class="stats-grid">
-        <div class="stat-card blue">
-            <div class="stat-icon">📦</div>
-            <div class="stat-info"><div class="stat-value">@totalMaterials</div><div class="stat-label">نوع ماده اولیه</div></div>
+    <div class="form-card filter-row">
+        <div class="form-group"><label>دوره</label>
+            <div class="segmented">@foreach (var g in Enum.GetValues<Granularity>()) {<button class="@(granularity == g && periods > 0 ? "on" : "")" @onclick="() => SetGranularity(g)">@DashboardAnalyticsService.Label(g)</button>}<button class="@(periods == 0 ? "on" : "")" @onclick="ShowAll">همه</button></div>
         </div>
-        @if (Auth.IsAdmin)
+        <div class="form-group"><label>تعداد @DashboardAnalyticsService.Label(granularity) اخیر</label><input class="form-input" type="number" min="1" max="400" value="@(periods == 0 ? "" : periods.ToString())" @onchange="SetPeriods" placeholder="همه" /></div>
+        <div class="form-group"><label>انبار</label><select class="form-input" value="@reportWarehouseId" @onchange="SetWarehouse"><option value="0">همه انبارها</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
+        <div class="form-group"><label>کالا</label><MaterialPicker Materials="materials" SelectedId="reportMaterialId" SelectedIdChanged="SetMaterial" Placeholder="همه‌ی کالاها — برای یک کالا جستجو کنید" /></div>
+        @if (SelectedMaterial != null && Auth.CanViewPrice)
         {
-            <div class="stat-card green">
-                <div class="stat-icon">💰</div>
-                <div class="stat-info"><div class="stat-value">@totalValue.ToString("N0") ﷼</div><div class="stat-label">ارزش کل موجودی</div></div>
-            </div>
+            <div class="form-group"><label>نمایش</label><div class="segmented"><button class="@(byQuantity ? "" : "on")" @onclick="() => byQuantity = false">ریال</button><button class="@(byQuantity ? "on" : "")" @onclick="() => byQuantity = true">@SelectedMaterial.StockUnitName</button></div></div>
         }
-        <div class="stat-card @(lowStockCount>0?"red":"green")">
-            <div class="stat-icon">⚠️</div>
-            <div class="stat-info"><div class="stat-value">@lowStockCount</div><div class="stat-label">نیازمند خرید</div></div>
-        </div>
-        <div class="stat-card orange">
-            <div class="stat-icon">🔔</div>
-            <div class="stat-info"><div class="stat-value">@alertCount</div><div class="stat-label">هشدار فعال</div></div>
-        </div>
+    </div>
+
+    <div class="stats-grid">
+        @if (Auth.CanViewPrice)
+        {
+            <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-info"><div class="stat-value" title="@UnitSet.N(data.CurrentValue, 0) ریال">@ChartMath.Compact(data.CurrentValue) <small>ریال</small></div><div class="stat-label">ارزش موجودی @(Scope)</div></div></div>
+            <div class="stat-card blue"><div class="stat-icon">⬆️</div><div class="stat-info"><div class="stat-value" title="@UnitSet.N(data.Flow.Sum(x => x.InValue), 0) ریال">@ChartMath.Compact(data.Flow.Sum(x => x.InValue)) <small>ریال</small></div><div class="stat-label">ورود در @RangeText</div></div></div>
+            <div class="stat-card orange"><div class="stat-icon">⬇️</div><div class="stat-info"><div class="stat-value" title="@UnitSet.N(data.Flow.Sum(x => x.OutValue), 0) ریال">@ChartMath.Compact(data.Flow.Sum(x => x.OutValue)) <small>ریال</small></div><div class="stat-label">خروج (مصرف) در @RangeText</div></div></div>
+        }
+        <div class="stat-card blue"><div class="stat-icon">📦</div><div class="stat-info"><div class="stat-value">@totalMaterials</div><div class="stat-label">نوع ماده اولیه</div></div></div>
+        <div class="stat-card @(lowStockCount>0?"red":"green")"><div class="stat-icon">⚠️</div><div class="stat-info"><div class="stat-value">@lowStockCount</div><div class="stat-label">نیازمند خرید</div></div></div>
+        <div class="stat-card orange"><div class="stat-icon">🔔</div><div class="stat-info"><div class="stat-value">@alertCount</div><div class="stat-label">هشدار موجودی و انقضا</div></div></div>
+        @if (Auth.CanViewPrice && invalidPriceCount > 0)
+        {
+            <div class="stat-card orange"><div class="stat-icon">🏷️</div><div class="stat-info"><div class="stat-value">@invalidPriceCount</div><div class="stat-label">فی نیازمند بررسی</div></div></div>
+        }
         @if (Auth.CanApprove && pendingCount > 0)
         {
-            <div class="stat-card red">
-                <div class="stat-icon">⏳</div>
-                <div class="stat-info"><div class="stat-value">@pendingCount</div><div class="stat-label">در انتظار تایید</div></div>
-            </div>
+            <div class="stat-card red"><div class="stat-icon">⏳</div><div class="stat-info"><div class="stat-value">@pendingCount</div><div class="stat-label">در انتظار تایید</div></div></div>
         }
+    </div>
+
+    <div style="opacity:@(busy ? "0.5" : "1")">
+    @if (Auth.CanViewPrice || SelectedMaterial != null)
+    {
+        var showQty = SelectedMaterial != null && (byQuantity || !Auth.CanViewPrice);
+        <div class="chart-card">
+            <h3>ورود و خروج @(SelectedMaterial != null ? $"«{SelectedMaterial.Name}»" : "همه‌ی کالاها") — هر @DashboardAnalyticsService.Label(granularity)</h3>
+            <div class="chart-sub">@(showQty ? $"مقدار به {SelectedMaterial!.StockUnitName}" : "مبلغ به ریال؛ خروج با آخرین فی خرید تا همان تاریخ") — @RangeText@(reportWarehouseId > 0 ? $" — {warehouses.FirstOrDefault(w => w.Id == reportWarehouseId)?.Name}" : "")</div>
+            <ColumnChart Labels="labels" Tooltips="longLabels" AriaLabel="نمودار ورود و خروج"
+                         Series="@(showQty ? new() { new("ورود", "var(--series-1)", data.Flow.Select(x => x.InQuantity).ToList()), new("خروج", "var(--series-2)", data.Flow.Select(x => x.OutQuantity).ToList()) }
+                                           : new() { new("ورود", "var(--series-1)", data.Flow.Select(x => x.InValue).ToList()), new("خروج", "var(--series-2)", data.Flow.Select(x => x.OutValue).ToList()) })"
+                         Format="@(showQty ? (Func<decimal, string>)(v => $"{UnitSet.N(v)} {SelectedMaterial!.StockUnitName}") : ChartMath.Compact)" />
+        </div>
+    }
+    @if (Auth.CanViewPrice)
+    {
+        <div>
+            <div class="chart-card">
+                <h3>ارزش موجودی @(Scope) در پایان هر @DashboardAnalyticsService.Label(granularity)</h3>
+                <div class="chart-sub">موجودی همان زمان × آخرین فی خرید تا همان زمان (ریال)</div>
+                <LineChart Labels="labels" Tooltips="longLabels" Values="@data.StockValue.Select(x => x.Value).ToList()" Name="ارزش موجودی" AriaLabel="نمودار ارزش موجودی" />
+            </div>
+            <div class="chart-card">
+                <h3>ارزش موجودی به تفکیک گروه</h3>
+                <div class="chart-sub">الان — جمع: @ChartMath.Compact(data.CurrentValue) ریال</div>
+                <div class="hbar-list">
+                    @{ var gmax = data.ValueByGroup.Select(x => x.Value).DefaultIfEmpty(1).Max(); }
+                    @foreach (var gv in data.ValueByGroup.Take(showAllGroups ? 1000 : 8))
+                    {
+                        <div class="hbar" title="@gv.Group: @UnitSet.N(gv.Value, 0) ریال"><span class="name">@gv.Group</span><span class="track"><span class="fill" style="display:block;width:@ChartMath.F((double)(gv.Value / gmax * 100))%"></span></span><span class="val">@ChartMath.Compact(gv.Value)</span></div>
+                    }
+                </div>
+                @if (data.ValueByGroup.Count > 8) { <button class="btn btn-secondary btn-sm" style="margin-top:.5rem" @onclick="() => showAllGroups = !showAllGroups">@(showAllGroups ? "کمتر" : $"همه‌ی گروه‌ها ({data.ValueByGroup.Count})")</button> }
+            </div>
+        </div>
+    }
+
+    <div class="chart-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+            <div><h3>میانگین مصرف مواد اولیه</h3><div class="chart-sub">بر اساس خروج‌های @consumptionDays روز اخیر@(reportWarehouseId > 0 ? " همین انبار" : "")@(Auth.CanViewPrice ? "؛ به ترتیب مبلغ مصرف" : "")</div></div>
+            <div class="segmented">@foreach (var d in new[] { 7, 30, 90, 365 }) {<button class="@(consumptionDays == d ? "on" : "")" @onclick="() => SetConsumptionDays(d)">@(d switch { 7 => "۷ روز", 30 => "۳۰ روز", 90 => "۳ ماه", _ => "۱ سال" })</button>}</div>
+        </div>
+        @if (!consumption.Any()) { <p class="text-muted">در این بازه خروجی ثبت نشده است.</p> }
+        else
+        {
+            var top = consumption.Take(10).ToList(); var cmax = top.Max(x => Auth.CanViewPrice ? x.Value : x.Quantity);
+            <div class="hbar-list" style="margin:.5rem 0 1rem">
+                @foreach (var c in top)
+                {
+                    var v = Auth.CanViewPrice ? c.Value : c.Quantity;
+                    <div class="hbar"><span class="name" title="@c.Material.Name"><code>@c.Material.Code</code> @c.Material.Name</span><span class="track"><span class="fill" style="display:block;width:@ChartMath.F(cmax > 0 ? (double)(v / cmax * 100) : 0)%"></span></span><span class="val">@(Auth.CanViewPrice ? ChartMath.Compact(c.Value) : $"{UnitSet.N(c.Quantity)} {c.Material.StockUnitName}")</span></div>
+                }
+            </div>
+            <div class="table-responsive"><table class="data-table">
+                <thead><tr><th>کد</th><th>ماده</th><th>مصرف در بازه</th>@if (Auth.CanViewPrice) {<th>مبلغ</th>}<th>میانگین روزانه</th><th>میانگین هفتگی</th><th>میانگین ماهانه</th><th>موجودی</th><th>کفایت موجودی</th></tr></thead>
+                <tbody>
+                    @foreach (var c in consumption.Take(showAllConsumption ? int.MaxValue : 10))
+                    {
+                        var u = c.Material.StockUnitName;
+                        <tr>
+                            <td><code>@c.Material.Code</code></td><td>@c.Material.Name</td>
+                            <td>@display.Format(c.Quantity, c.Material)</td>
+                            @if (Auth.CanViewPrice) {<td>@UnitSet.N(c.Value, 0)</td>}
+                            <td>@UnitSet.N(c.PerDay) @u</td><td>@UnitSet.N(c.PerDay * 7) @u</td><td>@UnitSet.N(c.PerDay * 30) @u</td>
+                            <td>@display.Format(c.CurrentStock, c.Material)</td>
+                            <td class="days-left @(c.DaysLeft < 7 ? "low" : "")">@(c.DaysLeft.HasValue ? $"{c.DaysLeft:N0} روز" : "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            @if (consumption.Count > 10) { <button class="btn btn-secondary btn-sm" style="margin-top:.5rem" @onclick="() => showAllConsumption = !showAllConsumption">@(showAllConsumption ? "فقط ۱۰ قلم مهم" : $"نمایش همه ({consumption.Count} قلم)")</button> }
+        }
+    </div>
+
+    <div class="section-title">گردش مواد در @RangeText</div>
+    <div class="table-responsive"><table class="data-table"><thead><tr><th>کد</th><th>ماده</th><th>ورود</th>@if (Auth.CanViewPrice) {<th>مبلغ ورود</th>}<th>خروج</th>@if (Auth.CanViewPrice) {<th>مبلغ خروج</th>}<th>خالص گردش</th></tr></thead><tbody>
+        @foreach (var r in data.Movement.OrderByDescending(x => x.IncomingValue + x.OutgoingValue).Take(showAllMovement ? int.MaxValue : 20))
+        {
+            <tr><td><code>@r.MaterialCode</code></td><td>@r.MaterialName</td><td>@UnitSet.N(r.IncomingQuantity) @r.Unit</td>@if (Auth.CanViewPrice) {<td>@UnitSet.N(r.IncomingValue, 0)</td>}<td>@UnitSet.N(r.OutgoingQuantity) @r.Unit</td>@if (Auth.CanViewPrice) {<td>@UnitSet.N(r.OutgoingValue, 0)</td>}<td>@UnitSet.N(r.IncomingQuantity - r.OutgoingQuantity) @r.Unit</td></tr>
+        }
+    </tbody></table></div>
+    @if (data.Movement.Count > 20) { <button class="btn btn-secondary btn-sm" style="margin:.5rem 0 1rem" @onclick="() => showAllMovement = !showAllMovement">@(showAllMovement ? "کمتر" : $"نمایش همه ({data.Movement.Count} قلم)")</button> }
     </div>
 
     @if (Auth.CanApprove && pendingWithdrawals.Any())
@@ -112,14 +186,14 @@
             <tbody>
                 @foreach (var m in FilteredMaterials)
                 {
-                    <tr class="@(m.CurrentStock<=m.MinStockLevel?"row-warning":"")">
+                    <tr class="@(WarehouseService.IsLowStock(m)?"row-warning":"")">
                         <td><code>@m.Code</code></td>
                         <td><strong>@m.Name</strong><br/><small class="text-muted">واحد موجودی: @m.StockUnitName</small></td>
                         <td>@display.Format(m.CurrentStock, m)</td>
                         @if (Auth.CanViewPrice) { <td>@m.PricePerUnit.ToString("N0") ﷼ <small class="text-muted">/ @m.StockUnitName</small></td> }
                         <td>
-                            @if (m.CurrentStock<=m.MinStockLevel)          { <span class="status-badge danger">خرید</span> }
-                            else if (m.CurrentStock<=m.MinStockLevel*1.5m) { <span class="status-badge warning">کم</span> }
+                            @if (WarehouseService.IsLowStock(m))          { <span class="status-badge danger">خرید</span> }
+                            else if (m.MinStockLevel>0 && m.CurrentStock<=m.MinStockLevel*1.5m) { <span class="status-badge warning">کم</span> }
                             else                                            { <span class="status-badge ok">✓</span> }
                         </td>
                     </tr>
@@ -130,14 +204,21 @@
 }
 
 @code {
-    bool loaded;
+    bool loaded, busy;
     List<Material> materials=new(); List<StockAlert> alerts=new();
     List<StockWithdrawal> pendingWithdrawals=new();
-    decimal totalValue; int totalMaterials,lowStockCount,alertCount,pendingCount;
+    decimal totalValue; int totalMaterials,lowStockCount,alertCount,pendingCount,invalidPriceCount;
     int? rejectingId; string rejectReason="";
     string materialSearch=""; StockDisplay display=StockDisplay.Empty;
-    List<WarehouseApp.Models.Warehouse> warehouses=new(); MovementDashboard movement=new(); DateTime reportFrom=DateTime.Today.AddDays(-30),reportTo=DateTime.Today;int reportWarehouseId,reportMaterialId;
-    IEnumerable<Material> FilteredMaterials => string.IsNullOrWhiteSpace(materialSearch) ? materials : materials.Where(x=>x.Name.Contains(materialSearch,StringComparison.OrdinalIgnoreCase)||x.Code.Contains(materialSearch,StringComparison.OrdinalIgnoreCase));
+    List<WarehouseApp.Models.Warehouse> warehouses=new();
+    IEnumerable<Material> FilteredMaterials => materials.Where(x => TextSearch.Matches(materialSearch, x.Name, x.Code));
+
+    Granularity granularity = Granularity.Month; int periods = 12; int reportWarehouseId, reportMaterialId; bool byQuantity;
+    int consumptionDays = 30; bool showAllConsumption, showAllGroups, showAllMovement;
+    DashboardData data = new(); List<ConsumptionRow> consumption = new(); List<string> labels = new(), longLabels = new();
+    Material? SelectedMaterial => materials.FirstOrDefault(m => m.Id == reportMaterialId);
+    string Scope => SelectedMaterial != null ? $"«{SelectedMaterial.Name}»" : reportWarehouseId > 0 ? "این انبار" : "کل انبارها";
+    string RangeText => periods == 0 ? "همه‌ی سوابق" : $"{periods} {DashboardAnalyticsService.Label(granularity)} اخیر";
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -146,14 +227,34 @@
         materials = await Warehouse.GetMaterialsAsync(); display = await Warehouse.GetStockDisplayAsync();
         warehouses=await Warehouse.GetWarehousesAsync();
         alerts = await Warehouse.GetAlertsAsync();
-        var s = await Warehouse.GetDashboardStatsAsync();
-        (totalValue,totalMaterials,lowStockCount,alertCount,pendingCount) = s;
+        (totalValue,totalMaterials,lowStockCount,alertCount,pendingCount,invalidPriceCount) = await Warehouse.GetDashboardStatsAsync();
         if (Auth.CanApprove) pendingWithdrawals = await Warehouse.GetPendingWithdrawalsAsync();
+        await LoadCharts(); await LoadConsumption();
         loaded = true;
-        await LoadMovement();
     }
-    async Task LoadMovement()=>movement=await Warehouse.GetMovementDashboardAsync(reportFrom,reportTo,reportWarehouseId==0?null:reportWarehouseId,reportMaterialId==0?null:reportMaterialId);
-    string QuantitySummary(bool incoming){var groups=movement.Rows.GroupBy(x=>string.IsNullOrWhiteSpace(x.Unit)?"واحد":x.Unit).Select(g=>$"{g.Sum(x=>incoming?x.IncomingQuantity:x.OutgoingQuantity):N3} {g.Key}").Where(x=>!x.StartsWith("0.000 "));return groups.Any()?string.Join(" | ",groups):"0";}
+    async Task LoadCharts()
+    {
+        busy = true;
+        try
+        {
+            data = await Analytics.GetAsync(granularity, periods, reportWarehouseId == 0 ? null : reportWarehouseId, reportMaterialId == 0 ? null : reportMaterialId);
+            labels = data.Flow.Select(x => x.Bucket.Label).ToList(); longLabels = data.Flow.Select(x => x.Bucket.LongLabel).ToList();
+        }
+        finally { busy = false; }
+    }
+    async Task LoadConsumption() => consumption = await Analytics.GetConsumptionAsync(consumptionDays, reportWarehouseId == 0 ? null : reportWarehouseId);
+
+    async Task SetGranularity(Granularity g)
+    {
+        if (periods == 0) periods = g switch { Granularity.Day => 30, Granularity.Week => 10, Granularity.Month => 12, _ => 5 };
+        else if (g != granularity) periods = g switch { Granularity.Day => 30, Granularity.Week => 10, Granularity.Month => 12, _ => 5 };
+        granularity = g; await LoadCharts();
+    }
+    async Task ShowAll() { periods = 0; if (granularity == Granularity.Day) granularity = Granularity.Month; await LoadCharts(); }
+    async Task SetPeriods(ChangeEventArgs e) { periods = int.TryParse(e.Value?.ToString(), out var n) ? Math.Clamp(n, 0, 400) : 0; await LoadCharts(); }
+    async Task SetWarehouse(ChangeEventArgs e) { reportWarehouseId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0; await LoadCharts(); await LoadConsumption(); }
+    async Task SetMaterial(int id) { reportMaterialId = id; byQuantity = id > 0 && !Auth.CanViewPrice; await LoadCharts(); }
+    async Task SetConsumptionDays(int d) { consumptionDays = d; await LoadConsumption(); }
 
     async Task Approve(int id) { await Warehouse.ApproveWithdrawalAsync(id, Auth.CurrentUser!.Id, Auth.CurrentUser.Username); await Load(); }
     void ShowReject(int id) { rejectingId=id; rejectReason=""; }

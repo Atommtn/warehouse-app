@@ -1,0 +1,68 @@
+@* Grouped columns over time periods; hovering a period shows every series at once. *@
+<div class="chart" @onmouseleave="() => hover = -1">
+    @if (Series.Count > 1)
+    {
+        <div class="chart-legend">@foreach (var s in Series) {<span><i class="key-rect" style="background:@s.Color"></i>@s.Name</span>}</div>
+    }
+    <div class="chart-plot">
+        <svg viewBox="0 0 @W @H" preserveAspectRatio="xMidYMid meet" role="img" aria-label="@AriaLabel">
+            @foreach (var t in ticks)
+            {
+                var y = Y(t);
+                <line x1="@L" x2="@(W - R)" y1="@ChartMath.F(y)" y2="@ChartMath.F(y)" class="grid" />
+                <g><text x="@(L - 8)" y="@ChartMath.F(y + 4)" class="tick" text-anchor="end">@Format(t)</text></g>
+            }
+            @for (var i = 0; i < n; i++)
+            {
+                var index = i; var x0 = L + band * i; var gx = x0 + (band - groupW) / 2;
+                if (index == hover) { <rect x="@ChartMath.F(x0)" y="@T" width="@ChartMath.F(band)" height="@PlotH" class="hover-band" /> }
+                @for (var s = 0; s < Series.Count; s++)
+                {
+                    var v = Series[s].Values[i];
+                    if (v > 0)
+                    {
+                        var y = Y(v);
+                        <path d="@ChartMath.Column(gx + s * (barW + 2), y, barW, T + PlotH - y)" fill="@Series[s].Color" />
+                    }
+                }
+                @if (i % labelEvery == 0 || i == n - 1)
+                {
+                    <g><text x="@ChartMath.F(x0 + band / 2)" y="@(H - 8)" class="tick" text-anchor="middle">@Labels[i]</text></g>
+                }
+                <rect x="@ChartMath.F(x0)" y="@T" width="@ChartMath.F(band)" height="@PlotH" fill="transparent" @onmouseover="() => hover = index" />
+            }
+            <line x1="@L" x2="@(W - R)" y1="@(T + PlotH)" y2="@(T + PlotH)" class="axis" />
+        </svg>
+        @if (hover >= 0 && hover < n)
+        {
+            <div class="chart-tip" style="left:@ChartMath.F(TipLeft)%">
+                <div class="tip-title">@LongLabels[hover]</div>
+                @foreach (var s in Series) {<div class="tip-row"><i class="key-line" style="background:@s.Color"></i><strong>@Format(s.Values[hover])</strong><span>@s.Name</span></div>}
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<string> Labels { get; set; } = Array.Empty<string>();
+    [Parameter] public IReadOnlyList<string>? Tooltips { get; set; }
+    [Parameter, EditorRequired] public List<ChartSeries> Series { get; set; } = new();
+    [Parameter] public Func<decimal, string> Format { get; set; } = ChartMath.Compact;
+    [Parameter] public string AriaLabel { get; set; } = "";
+
+    const int W = 960, H = 300, L = 92, R = 12, T = 12, PlotH = H - T - 34;
+    int hover = -1, n, labelEvery = 1; double band, groupW, barW; decimal max; List<decimal> ticks = new();
+    IReadOnlyList<string> LongLabels => Tooltips ?? Labels;
+    double Y(decimal v) => T + PlotH - (double)(v / max) * PlotH;
+    double TipLeft => Math.Clamp((L + band * (hover + 0.5)) / W * 100, 12, 88);
+
+    protected override void OnParametersSet()
+    {
+        n = Labels.Count; band = n == 0 ? 0 : (W - L - R) / (double)n;
+        var k = Math.Max(1, Series.Count);
+        barW = Math.Max(2, Math.Min(24, (band * 0.72 - 2 * (k - 1)) / k)); groupW = barW * k + 2 * (k - 1);
+        (max, ticks) = ChartMath.Ticks(Series.SelectMany(s => s.Values).DefaultIfEmpty(0).Max());
+        labelEvery = Math.Max(1, (int)Math.Ceiling(n / 12.0));
+        if (hover >= n) hover = -1;
+    }
+}

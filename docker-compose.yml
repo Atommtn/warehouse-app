@@ -7,6 +7,10 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://0.0.0.0:9095
       - ConnectionStrings__DefaultConnection=Server=sql2019,1433;Database=WarehouseDB;User Id=sa;Password=2219@Atomtneda;TrustServerCertificate=True;
+      # پنل پیامک آسانک — مقدارها را در فایل .env کنار همین فایل بگذارید (SMS_USERNAME / SMS_PASSWORD / SMS_SOURCE)
+      - Sms__Username=${SMS_USERNAME:-}
+      - Sms__Password=${SMS_PASSWORD:-}
+      - Sms__Source=${SMS_SOURCE:-}
     ports:
       - "${APP_PORT:-9095}:9095"
     networks:

@@ -48,7 +48,8 @@ public static class PageAccess
 public partial class WarehouseService
 {
     private readonly IDbContextFactory<AppDbContext> _factory;
-    public WarehouseService(IDbContextFactory<AppDbContext> factory) => _factory = factory;
+    private readonly LowStockSignal? _lowStock;
+    public WarehouseService(IDbContextFactory<AppDbContext> factory, LowStockSignal? lowStock = null) { _factory = factory; _lowStock = lowStock; }
     public async Task<List<RolePagePermission>> GetRolePermissionsAsync(UserRole role){await using var db=await _factory.CreateDbContextAsync();return await db.RolePagePermissions.Where(x=>x.Role==role).OrderBy(x=>x.PageKey).ToListAsync();}
     public async Task SaveRolePermissionsAsync(UserRole role,IEnumerable<string> allowed){await using var db=await _factory.CreateDbContextAsync();var set=allowed.ToHashSet(StringComparer.OrdinalIgnoreCase);var rows=await db.RolePagePermissions.Where(x=>x.Role==role).ToListAsync();foreach(var page in PageAccess.Pages){var row=rows.FirstOrDefault(x=>x.PageKey==page.Key);if(row==null){row=new RolePagePermission{Role=role,PageKey=page.Key};db.RolePagePermissions.Add(row);}row.IsAllowed=role==UserRole.Admin||set.Contains(page.Key);}await db.SaveChangesAsync();}
 
@@ -92,8 +93,13 @@ public partial class WarehouseService
         if(!string.IsNullOrWhiteSpace(search)){var ids=await MatchingMaterialIdsAsync(db,search);q=q.Where(x=>ids.Contains(x.MaterialId)||x.DocumentNumber.Contains(search));}
         return await q.OrderByDescending(x=>x.TransactionDate).ThenByDescending(x=>x.Id).Take(1000).ToListAsync();
     }
-    private static async Task SyncTotalAsync(AppDbContext db,int materialId)
-    { var mat=await db.Materials.FindAsync(materialId); if(mat!=null) mat.CurrentStock=await db.WarehouseStocks.Where(x=>x.MaterialId==materialId).SumAsync(x=>x.Quantity); }
+    // Recomputes the material total; a drop to the minimum is signalled so an SMS can go out (the sender re-checks after commit).
+    private async Task SyncTotalAsync(AppDbContext db,int materialId)
+    {
+        var mat=await db.Materials.FindAsync(materialId); if(mat==null) return;
+        var before=mat.CurrentStock; mat.CurrentStock=await db.WarehouseStocks.Where(x=>x.MaterialId==materialId).SumAsync(x=>x.Quantity);
+        if(mat.MinStockLevel>0&&before>mat.MinStockLevel&&mat.CurrentStock<=mat.MinStockLevel) _lowStock?.Raise(materialId);
+    }
 
     // ── Users ──
     public async Task<List<User>> GetUsersAsync()
@@ -250,26 +256,36 @@ public partial class WarehouseService
     }
 
     // ── Alerts ──
+    /// <summary>
+    /// Low stock (only materials with a minimum set) and expiry of what is still on the shelf: stock is assumed to leave
+    /// first-in-first-out, so only the newest entries that make up today's stock can expire.
+    /// </summary>
     public async Task<List<StockAlert>> GetAlertsAsync(string? search = null)
     {
         await using var db = await _factory.CreateDbContextAsync();
         var alerts = new List<StockAlert>();
-        var materials = await db.Materials.Where(m => m.IsActive).ToListAsync();
-        var now = DateTime.UtcNow; var soon = now.AddDays(7);
+        var materials = (await db.Materials.Where(m => m.IsActive).ToListAsync()).Where(m => TextSearch.Matches(search, m.Name, m.Code)).ToList();
+        var ids = materials.Where(m => m.CurrentStock > 0).Select(m => m.Id).ToList();
+        var entries = (await db.StockEntries.Where(e => ids.Contains(e.MaterialId)).ToListAsync()).ToLookup(e => e.MaterialId);
+        var now = DateTime.Now; var soon = now.AddDays(7);
         foreach (var mat in materials)
         {
-            if (!TextSearch.Matches(search, mat.Name, mat.Code)) continue;
-            if (mat.CurrentStock <= mat.MinStockLevel)
-                alerts.Add(new StockAlert { MaterialId=mat.Id, MaterialName=mat.Name, MaterialCode=mat.Code, Unit=mat.StockUnitName, CurrentStock=mat.CurrentStock, MinStockLevel=mat.MinStockLevel, Type=AlertType.LowStock, Message=$"موجودی {mat.Name} ({UnitSet.N(mat.CurrentStock)} {mat.StockUnitName}) به حد هشدار رسیده" });
+            if (IsLowStock(mat))
+                alerts.Add(new StockAlert { MaterialId=mat.Id, MaterialName=mat.Name, MaterialCode=mat.Code, Unit=mat.StockUnitName, CurrentStock=mat.CurrentStock, MinStockLevel=mat.MinStockLevel, Type=AlertType.LowStock, Message=$"موجودی {mat.Name} ({UnitSet.N(mat.CurrentStock)} {mat.StockUnitName}) به حد هشدار ({UnitSet.N(mat.MinStockLevel)}) رسیده" });
+            var remaining = mat.CurrentStock;
+            foreach (var e in entries[mat.Id].OrderByDescending(e => e.EntryDate).ThenByDescending(e => e.Id))
+            {
+                if (remaining <= 0) break;
+                var onShelf = Math.Min(e.Quantity, remaining); remaining -= onShelf;
+                if (e.ExpiryDate < now)
+                    alerts.Add(new StockAlert { MaterialId=mat.Id, MaterialName=mat.Name, MaterialCode=mat.Code, Unit=mat.StockUnitName, CurrentStock=onShelf, Type=AlertType.Expired, ExpiryDate=e.ExpiryDate, Message=$"{UnitSet.N(onShelf)} {mat.StockUnitName} از {mat.Name} (ورود {e.EntryDate.ToShamsi()}) منقضی شده!" });
+                else if (e.ExpiryDate <= soon)
+                    alerts.Add(new StockAlert { MaterialId=mat.Id, MaterialName=mat.Name, MaterialCode=mat.Code, Unit=mat.StockUnitName, CurrentStock=onShelf, Type=AlertType.Expiring, ExpiryDate=e.ExpiryDate, Message=$"{UnitSet.N(onShelf)} {mat.StockUnitName} از {mat.Name} تا {(e.ExpiryDate.Date-now.Date).Days} روز دیگر منقضی می‌شود" });
+            }
         }
-        var expiring = await db.StockEntries.Include(e => e.Material).Where(e => e.ExpiryDate <= soon && e.ExpiryDate >= now && e.Material!.IsActive).ToListAsync();
-        foreach (var e in expiring)
-            alerts.Add(new StockAlert { MaterialId=e.MaterialId, MaterialName=e.Material?.Name??"", MaterialCode=e.Material?.Code??"", Type=AlertType.Expiring, ExpiryDate=e.ExpiryDate, Message=$"{e.Material?.Name} تا {(e.ExpiryDate-now).Days} روز دیگر منقضی می‌شود" });
-        var expired = await db.StockEntries.Include(e => e.Material).Where(e => e.ExpiryDate < now && e.Material!.IsActive).ToListAsync();
-        foreach (var e in expired)
-            alerts.Add(new StockAlert { MaterialId=e.MaterialId, MaterialName=e.Material?.Name??"", MaterialCode=e.Material?.Code??"", Type=AlertType.Expired, ExpiryDate=e.ExpiryDate, Message=$"{e.Material?.Name} منقضی شده!" });
         return alerts;
     }
+    public static bool IsLowStock(Material m) => m.MinStockLevel > 0 && m.CurrentStock <= m.MinStockLevel;
 
     public async Task<(List<Material> materials, List<StockEntry> entries, List<StockWithdrawal> withdrawals, List<StockAlert> alerts)> GetExportDataAsync()
     {

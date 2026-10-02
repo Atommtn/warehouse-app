@@ -94,7 +94,7 @@
             @foreach (var m in FilteredMaterials)
             {
                 var set = display.For(m);
-                <tr class="@(m.CurrentStock<=m.MinStockLevel?"row-warning":"")">
+                <tr class="@(WarehouseService.IsLowStock(m)?"row-warning":"")">
                     <td><code>@m.Code</code></td>
                     <td><strong>@m.Name</strong></td>
                     <td>@(m.Group?.Name??"-")</td>
@@ -108,8 +108,8 @@
                     <td>@UnitSet.N(m.MinStockLevel) @m.StockUnitName</td>
                     <td>@(m.Supplier?.Name??"-")</td>
                     <td>
-                        @if (m.CurrentStock<=m.MinStockLevel)          { <span class="status-badge danger">خرید</span> }
-                        else if (m.CurrentStock<=m.MinStockLevel*1.5m) { <span class="status-badge warning">کم</span> }
+                        @if (WarehouseService.IsLowStock(m))          { <span class="status-badge danger">خرید</span> }
+                        else if (m.MinStockLevel>0 && m.CurrentStock<=m.MinStockLevel*1.5m) { <span class="status-badge warning">کم</span> }
                         else                                            { <span class="status-badge ok">✓</span> }
                     </td>
                     @if (Auth.IsManager)
