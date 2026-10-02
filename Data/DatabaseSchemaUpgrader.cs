@@ -6,6 +6,32 @@ public static class DatabaseSchemaUpgrader
 {
     public static void Upgrade(AppDbContext db)
     {
+        // Tables copied into the database by hand (e.g. Units) can have an Id column without IDENTITY, so EF inserts fail with
+        // "Cannot insert NULL into column Id". Give such Id columns a sequence default that starts after the current maximum;
+        // existing rows, keys and foreign keys stay untouched.
+        db.Database.ExecuteSqlRaw("""
+DECLARE @table sysname,@type sysname,@sequence sysname,@next bigint,@sql nvarchar(max);
+DECLARE id_cursor CURSOR LOCAL FAST_FORWARD FOR
+ SELECT t.[name],ty.[name] FROM sys.tables t
+ JOIN sys.columns c ON c.[object_id]=t.[object_id] AND c.[name]=N'Id'
+ JOIN sys.types ty ON ty.[user_type_id]=c.[user_type_id]
+ WHERE t.[is_ms_shipped]=0 AND c.[is_identity]=0 AND c.[default_object_id]=0 AND ty.[name] IN (N'int',N'bigint')
+   AND EXISTS(SELECT 1 FROM sys.index_columns ic JOIN sys.indexes i ON i.[object_id]=ic.[object_id] AND i.[index_id]=ic.[index_id] WHERE i.[is_primary_key]=1 AND ic.[object_id]=t.[object_id] AND ic.[column_id]=c.[column_id]);
+OPEN id_cursor; FETCH NEXT FROM id_cursor INTO @table,@type;
+WHILE @@FETCH_STATUS=0
+BEGIN
+ SET @sequence=N'Seq_'+@table+N'_Id';
+ SET @sql=N'SELECT @n=ISNULL(MAX([Id]),0)+1 FROM '+QUOTENAME(@table); EXEC sp_executesql @sql,N'@n bigint OUTPUT',@n=@next OUTPUT;
+ IF OBJECT_ID(@sequence,N'SO') IS NULL
+ BEGIN SET @sql=N'CREATE SEQUENCE '+QUOTENAME(@sequence)+N' AS '+@type+N' START WITH '+CAST(@next AS nvarchar(30))+N' INCREMENT BY 1'; EXEC sp_executesql @sql; END
+ ELSE
+ BEGIN SET @sql=N'ALTER SEQUENCE '+QUOTENAME(@sequence)+N' RESTART WITH '+CAST(@next AS nvarchar(30)); EXEC sp_executesql @sql; END;
+ SET @sql=N'ALTER TABLE '+QUOTENAME(@table)+N' ADD CONSTRAINT '+QUOTENAME(N'DF_'+@table+N'_Id')+N' DEFAULT (NEXT VALUE FOR '+QUOTENAME(@sequence)+N') FOR [Id]'; EXEC sp_executesql @sql;
+ FETCH NEXT FROM id_cursor INTO @table,@type;
+END;
+CLOSE id_cursor; DEALLOCATE id_cursor;
+""");
+
         db.Database.ExecuteSqlRaw("""
 IF OBJECT_ID(N'[Warehouses]', N'U') IS NULL
 BEGIN
