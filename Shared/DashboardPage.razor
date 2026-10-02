@@ -114,8 +114,8 @@
                 {
                     <tr class="@(m.CurrentStock<=m.MinStockLevel?"row-warning":"")">
                         <td><code>@m.Code</code></td>
-                        <td><strong>@m.Name</strong><br/><small class="text-muted">واحد موجودی: @m.BaseUnitName</small></td>
-                        <td>@m.CurrentStock.ToString("N2") @m.BaseUnitName</td>
+                        <td><strong>@m.Name</strong><br/><small class="text-muted">واحد موجودی: @(display.UnitOf(m.Id) ?? m.BaseUnitName)</small></td>
+                        <td>@display.Format(m.CurrentStock, m, "N2")</td>
                         @if (Auth.CanViewPrice) { <td>@m.PricePerUnit.ToString("N0") ﷼</td> }
                         <td>
                             @if (m.CurrentStock<=m.MinStockLevel)          { <span class="status-badge danger">خرید</span> }
@@ -135,7 +135,7 @@
     List<StockWithdrawal> pendingWithdrawals=new();
     decimal totalValue; int totalMaterials,lowStockCount,alertCount,pendingCount;
     int? rejectingId; string rejectReason="";
-    string materialSearch="";
+    string materialSearch=""; StockDisplay display=StockDisplay.Empty;
     List<WarehouseApp.Models.Warehouse> warehouses=new(); MovementDashboard movement=new(); DateTime reportFrom=DateTime.Today.AddDays(-30),reportTo=DateTime.Today;int reportWarehouseId,reportMaterialId;
     IEnumerable<Material> FilteredMaterials => string.IsNullOrWhiteSpace(materialSearch) ? materials : materials.Where(x=>x.Name.Contains(materialSearch,StringComparison.OrdinalIgnoreCase)||x.Code.Contains(materialSearch,StringComparison.OrdinalIgnoreCase));
 
@@ -143,7 +143,7 @@
 
     async Task Load()
     {
-        materials = await Warehouse.GetMaterialsAsync();
+        materials = await Warehouse.GetMaterialsAsync(); display = await Warehouse.GetStockDisplayAsync();
         warehouses=await Warehouse.GetWarehousesAsync();
         alerts = await Warehouse.GetAlertsAsync();
         var s = await Warehouse.GetDashboardStatsAsync();

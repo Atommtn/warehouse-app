@@ -103,7 +103,7 @@
                         { <span class="text-muted">-</span> }
                     </td>
                     <td>@m.BaseUnitName</td>
-                    <td>@m.CurrentStock.ToString("N2") @m.BaseUnitName</td>
+                    <td>@display.Format(m.CurrentStock, m, "N2")</td>
                     <td>@m.MinStockLevel.ToString("N2") @m.BaseUnitName</td>
                     <td>@(m.Supplier?.Name??"-")</td>
                     <td>
@@ -128,14 +128,14 @@
     string groupSearch="", supplierSearch="";
     List<Material> materials=new(); List<Supplier> suppliers=new();
     List<Unit> units=new(); List<MaterialGroup> groups=new();
-    bool showForm; int? editId; string search="";
+    bool showForm; int? editId; string search=""; StockDisplay display=StockDisplay.Empty;
     string fCode="",fName="",fNotes="",fBaseUnitName="کیلوگرم",err="";
     decimal fMinStock=0, fBaseQuantity=1;
     int? fSupplierId, fUnitId, fGroupId;
 
     protected override async Task OnInitializedAsync()
     {
-        materials = await Warehouse.GetMaterialsAsync();
+        materials = await Warehouse.GetMaterialsAsync(); display = await Warehouse.GetStockDisplayAsync();
         suppliers = await Warehouse.GetSuppliersAsync();
         units     = await Warehouse.GetUnitsAsync();
         groups    = await Warehouse.GetGroupsAsync();

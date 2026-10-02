@@ -94,6 +94,7 @@ BEGIN
  ALTER TABLE [StockWithdrawals] ADD [EnteredUnitName] nvarchar(100) NOT NULL CONSTRAINT [DF_StockWithdrawals_EnteredUnitName] DEFAULT N'';
  ALTER TABLE [StockWithdrawals] ADD [ConversionFactor] decimal(18,6) NOT NULL CONSTRAINT [DF_StockWithdrawals_ConversionFactor] DEFAULT 1;
 END;
+IF COL_LENGTH('Materials','DisplayUnitName') IS NULL ALTER TABLE [Materials] ADD [DisplayUnitName] nvarchar(100) NOT NULL CONSTRAINT [DF_Materials_DisplayUnitName] DEFAULT N'';
 IF COL_LENGTH('StockWithdrawals','Department') IS NULL ALTER TABLE [StockWithdrawals] ADD [Department] nvarchar(200) NOT NULL CONSTRAINT [DF_StockWithdrawals_Department] DEFAULT N'';
 IF COL_LENGTH('RecipeIngredients','UnitName') IS NULL ALTER TABLE [RecipeIngredients] ADD [UnitName] nvarchar(100) NOT NULL CONSTRAINT [DF_RecipeIngredients_UnitName] DEFAULT N'';
 IF OBJECT_ID(N'[MaterialUnitConversions]',N'U') IS NULL
@@ -107,6 +108,22 @@ BEGIN
     ALTER TABLE [StockWithdrawals] ADD [WarehouseId] int NULL;
     ALTER TABLE [StockWithdrawals] ADD CONSTRAINT [FK_StockWithdrawals_Warehouses] FOREIGN KEY ([WarehouseId]) REFERENCES [Warehouses]([Id]);
 END;
+-- Base-unit quantities need 6 decimals so units like 1 عدد = 1/30 شانه do not drift (e.g. 10 eggs must be 0.666667 kg, not 0.67).
+DECLARE @qtyColumns TABLE([TableName] sysname,[ColumnName] sysname);
+INSERT INTO @qtyColumns VALUES(N'StockEntries',N'Quantity'),(N'StockWithdrawals',N'Quantity'),(N'Materials',N'CurrentStock'),(N'Materials',N'MinStockLevel'),(N'WarehouseStocks',N'Quantity'),(N'WarehouseStocks',N'MinStockLevel'),(N'InventoryTransactions',N'IncomingQuantity'),(N'InventoryTransactions',N'OutgoingQuantity'),(N'InventoryTransactions',N'BalanceAfter');
+DECLARE @tableName sysname,@columnName sysname,@constraintName sysname,@sql nvarchar(max);
+DECLARE qty_cursor CURSOR LOCAL FAST_FORWARD FOR
+ SELECT q.[TableName],q.[ColumnName] FROM @qtyColumns q JOIN sys.columns c ON c.[object_id]=OBJECT_ID(q.[TableName]) AND c.[name]=q.[ColumnName] WHERE c.[scale]<6;
+OPEN qty_cursor; FETCH NEXT FROM qty_cursor INTO @tableName,@columnName;
+WHILE @@FETCH_STATUS=0
+BEGIN
+ SET @constraintName=(SELECT TOP(1) dc.[name] FROM sys.default_constraints dc JOIN sys.columns c ON c.[object_id]=dc.[parent_object_id] AND c.[column_id]=dc.[parent_column_id] WHERE dc.[parent_object_id]=OBJECT_ID(@tableName) AND c.[name]=@columnName);
+ IF @constraintName IS NOT NULL BEGIN SET @sql=N'ALTER TABLE '+QUOTENAME(@tableName)+N' DROP CONSTRAINT '+QUOTENAME(@constraintName); EXEC sp_executesql @sql; END;
+ SET @sql=N'ALTER TABLE '+QUOTENAME(@tableName)+N' ALTER COLUMN '+QUOTENAME(@columnName)+N' decimal(24,6) NOT NULL'; EXEC sp_executesql @sql;
+ IF @constraintName IS NOT NULL BEGIN SET @sql=N'ALTER TABLE '+QUOTENAME(@tableName)+N' ADD CONSTRAINT '+QUOTENAME(@constraintName)+N' DEFAULT 0 FOR '+QUOTENAME(@columnName); EXEC sp_executesql @sql; END;
+ FETCH NEXT FROM qty_cursor INTO @tableName,@columnName;
+END;
+CLOSE qty_cursor; DEALLOCATE qty_cursor;
 IF OBJECT_ID(N'[Assets]',N'U') IS NULL
  CREATE TABLE [Assets]([Id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_Assets] PRIMARY KEY,[Name] nvarchar(300) NOT NULL,[Location] nvarchar(200) NOT NULL CONSTRAINT [DF_Assets_Location] DEFAULT N'',[Quantity] decimal(18,3) NOT NULL,[UnitPrice] decimal(18,2) NOT NULL,[PurchaseDate] datetime2 NOT NULL,[Notes] nvarchar(max) NOT NULL CONSTRAINT [DF_Assets_Notes] DEFAULT N'',[CreatedAt] datetime2 NOT NULL CONSTRAINT [DF_Assets_Created] DEFAULT SYSUTCDATETIME(),[CreatedByUsername] nvarchar(200) NOT NULL CONSTRAINT [DF_Assets_CreatedBy] DEFAULT N'');
 IF OBJECT_ID(N'[AssetDisposals]',N'U') IS NULL

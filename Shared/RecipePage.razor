@@ -189,14 +189,14 @@ else
                 <div class="profit-box">
                     <div class="profit-label">قیمت فروش / کیلو</div>
                     <div class="profit-value">@calcResult.SellingPricePerKg.ToString("N0") ریال</div>
-                    <div class="profit-sub">(@(calcResult.SellingPricePerKg/10).ToString("N0") تومان)</div>
+                    <div class="profit-sub">(@((calcResult.SellingPricePerKg/10).ToString("N0")) تومان)</div>
                 </div>
                 @if (calcRecipe.PieceWeightGrams > 0)
                 {
                     <div class="profit-box">
                         <div class="profit-label">قیمت فروش / دانه</div>
                         <div class="profit-value">@calcResult.SellingPricePerPiece.ToString("N0") ریال</div>
-                        <div class="profit-sub">(@(calcResult.SellingPricePerPiece/10).ToString("N0") تومان)</div>
+                        <div class="profit-sub">(@((calcResult.SellingPricePerPiece/10).ToString("N0")) تومان)</div>
                     </div>
                 }
                 <div class="profit-box profit-amount">
@@ -211,7 +211,7 @@ else
             <h4>📋 جزئیات مواد</h4>
             <table class="data-table">
                 <thead>
-                    <tr><th>کد</th><th>ماده</th><th>نوع</th><th>مقدار</th><th>واحد پایه</th><th>واحد انبار</th><th>ضریب</th><th>آخرین فی خرید</th><th>فی واحد پایه</th><th>هزینه ردیف</th></tr>
+                    <tr><th>کد</th><th>ماده</th><th>نوع</th><th>مقدار</th><th>واحد پایه</th><th>واحد انبار</th><th>معادل واحد پایه</th><th>آخرین فی خرید</th><th>فی واحد پایه</th><th>هزینه ردیف</th></tr>
                 </thead>
                 <tbody>
                     @foreach (var line in calcResult.Lines)

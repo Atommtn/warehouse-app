@@ -13,9 +13,9 @@
             <input value="@materialSearch" @oninput="OnMaterialSearch" class="form-input" placeholder="🔍 جستجوی نام یا کد ماده..." />
             <select value="@selId" @onchange="OnMaterialChange" class="form-input">
                 <option value="0">انتخاب کنید...</option>
-                @foreach (var m in materials) { <option value="@m.Id">[@m.Code] @m.Name — @m.CurrentStock.ToString("N3") @m.BaseUnitName</option> }
+                @foreach (var m in materials) { <option value="@m.Id">[@m.Code] @m.Name — @display.Format(m.CurrentStock, m)</option> }
             </select>
-            @if (sel != null) { <small class="form-hint">موجودی این انبار: @selectedStock.ToString("N3") @sel.BaseUnitName</small> }
+            @if (sel != null) { <small class="form-hint">موجودی این انبار: @display.Format(selectedStock, sel)</small> }
         </div>
         <div class="form-group">
             <label>مقدار *</label>
@@ -101,14 +101,14 @@
     int warehouseId; decimal selectedStock;
     Material? sel; int selId=0; decimal qty=0; string reason="",department="",ok="",err="",selectedUnit="";List<MaterialUnitConversion> materialUnits=new();List<string> departments=new();
     DateTime wDate=DateTime.Today;
-    string materialSearch="", withdrawalSearch="", period="month";
+    string materialSearch="", withdrawalSearch="", period="month"; StockDisplay display=StockDisplay.Empty;
     StockWithdrawal? editing; decimal eQty; string eUnit="", eDepartment="", eReason="", editErr=""; DateTime eDate; List<MaterialUnitConversion> editUnits=new();
 
     protected override async Task OnInitializedAsync() => await Load();
 
     async Task Load()
     {
-        materials = await Warehouse.GetMaterialsAsync();
+        materials = await Warehouse.GetMaterialsAsync(); display = await Warehouse.GetStockDisplayAsync();
         warehouses = await Warehouse.GetWarehousesAsync(); if(warehouseId==0) warehouseId=warehouses.FirstOrDefault()?.Id??0;
         withdrawals = await Warehouse.GetWithdrawalsAsync(search: withdrawalSearch, from: PeriodFilter.Start(period));
         var known = new[] { "تولید نان", "شیرینی‌پزی", "فروشگاه", "آشپزخانه" };
@@ -119,7 +119,7 @@
     {
         selId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
         sel = materials.FirstOrDefault(m => m.Id == selId);
-        materialUnits=selId>0?await Warehouse.GetMaterialUnitsAsync(selId):new();selectedUnit=materialUnits.FirstOrDefault()?.UnitName??"";
+        materialUnits=selId>0?await Warehouse.GetMaterialUnitsAsync(selId):new();selectedUnit=display.UnitOf(selId)??materialUnits.FirstOrDefault()?.UnitName??"";
         selectedStock=warehouseId>0&&selId>0?await Warehouse.GetWarehouseStockAsync(warehouseId,selId):0;
     }
     async Task OnWarehouseChange(ChangeEventArgs e){warehouseId=int.TryParse(e.Value?.ToString(),out var id)?id:0;selectedStock=warehouseId>0&&selId>0?await Warehouse.GetWarehouseStockAsync(warehouseId,selId):0;}

@@ -66,6 +66,7 @@ public class Material
     // مثال: ۱ گونی = ۴۰ کیلوگرم → BaseQuantity=40, BaseUnitName="کیلوگرم"
     public decimal BaseQuantity { get; set; } = 1;
     public string BaseUnitName { get; set; } = "کیلوگرم";
+    public string DisplayUnitName { get; set; } = "";
     public bool UnitsNormalized { get; set; }
     public List<StockEntry> Entries { get; set; } = new();
     public List<StockWithdrawal> Withdrawals { get; set; } = new();
