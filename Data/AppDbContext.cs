@@ -86,6 +86,7 @@ public class AppDbContext : DbContext
         m.Entity<AppSetting>().Property(x=>x.Key).HasMaxLength(100);
         m.Entity<SmsLog>().Property(x=>x.Kind).HasMaxLength(50);
         m.Entity<SmsLog>().Property(x=>x.Recipient).HasMaxLength(50);
+        m.Entity<SmsLog>().Property(x=>x.MessageId).HasMaxLength(100);
     }
 }
 

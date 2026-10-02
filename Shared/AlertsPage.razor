@@ -15,7 +15,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
             <h3>📱 پیامک هشدار</h3>
             @if (Sms.IsConfigured) { <span class="status-badge ok">پنل آسانک وصل است — خط @Sms.Source</span> }
-            else { <span class="status-badge danger">پنل پیامک تنظیم نشده (Sms__Username / Sms__Password / Sms__Source در فایل env)</span> }
+            else { <span class="status-badge danger">پنل پیامک تنظیم نشده (SMS_USERNAME / API_CODE / SMS_SOURCE در فایل .env)</span> }
         </div>
         @if (smsSettings != null)
         {
@@ -38,9 +38,10 @@
             </div>
             @if (smsLogs.Any())
             {
-                <details style="margin-top:.75rem"><summary>آخرین پیامک‌ها (@smsLogs.Count)</summary>
-                    <div class="table-responsive"><table class="data-table"><thead><tr><th>زمان</th><th>نوع</th><th>گیرنده</th><th>متن</th><th>نتیجه</th></tr></thead><tbody>
-                    @foreach (var l in smsLogs) { <tr><td>@l.SentAt.ToShamsiWithTime()</td><td>@l.Kind</td><td dir="ltr">@l.Recipient</td><td dir="ltr" style="white-space:pre-wrap">@l.Message</td><td>@if (l.Success) {<span class="status-badge ok">ارسال شد</span>} else {<span class="status-badge danger" title="@l.Response">خطا</span>}<br/><small class="text-muted" dir="ltr">@l.Response</small></td></tr> }
+                <details style="margin-top:.75rem" open="@logsOpen"><summary>آخرین پیامک‌ها (@smsLogs.Count)</summary>
+                    <button class="btn btn-secondary btn-sm" style="margin:.5rem 0" @onclick="RefreshStatuses" disabled="@(smsBusy || !Sms.IsConfigured)">🔄 بررسی وضعیت تحویل</button>
+                    <div class="table-responsive"><table class="data-table"><thead><tr><th>زمان</th><th>نوع</th><th>گیرنده</th><th>متن</th><th>نتیجه</th><th>وضعیت تحویل</th></tr></thead><tbody>
+                    @foreach (var l in smsLogs) { <tr><td>@l.SentAt.ToShamsiWithTime()</td><td>@l.Kind</td><td dir="ltr">@l.Recipient</td><td dir="ltr" style="white-space:pre-wrap">@l.Message</td><td>@if (l.Success) {<span class="status-badge ok">ارسال شد</span>} else {<span class="status-badge danger" title="@l.Response">خطا</span>}<br/><small class="text-muted" dir="ltr">@l.Response</small></td><td dir="ltr"><small>@l.DeliveryStatus</small>@if (l.StatusCheckedAt.HasValue) {<br/><small class="text-muted">@l.StatusCheckedAt.Value.ToShamsiWithTime()</small>}</td></tr> }
                     </tbody></table></div>
                 </details>
             }
@@ -116,6 +117,8 @@
     List<StockAlert> alerts=new(),lowStock=new(),expiring=new(),expired=new();
     List<StockEntry> invalidPrices=new(); int? editingPriceId; decimal correctPrice;
 
+    bool logsOpen;
+    async Task RefreshStatuses() { smsBusy = true; try { var n = await Sms.RefreshStatusesAsync(); smsLogs = await Sms.GetLogsAsync(); logsOpen = true; smsOk = true; smsMessage = n == 0 ? "پیامکی با شناسه‌ی ارسال (msgid) برای بررسی نیست" : $"وضعیت {n} پیامک از پنل گرفته شد"; } catch (Exception ex) { smsOk = false; smsMessage = ex.Message; } finally { smsBusy = false; } }
     SmsSettings? smsSettings; string recipientsText = "", preview = "", smsMessage = ""; bool smsOk, smsBusy; List<SmsLog> smsLogs = new();
 
     protected override async Task OnInitializedAsync() { await LoadAlerts(); if (Auth.IsAdmin) await LoadSms(); }

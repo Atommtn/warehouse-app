@@ -161,6 +161,12 @@ IF COL_LENGTH('MaterialUnitConversions','IsApproximate') IS NULL ALTER TABLE [Ma
 IF COL_LENGTH('StockEntries','TotalPrice') IS NULL ALTER TABLE [StockEntries] ADD [TotalPrice] decimal(18,2) NOT NULL CONSTRAINT [DF_StockEntries_TotalPrice] DEFAULT 0;
 IF OBJECT_ID(N'[AppSettings]',N'U') IS NULL CREATE TABLE [AppSettings]([Key] nvarchar(100) NOT NULL CONSTRAINT [PK_AppSettings] PRIMARY KEY,[Value] nvarchar(max) NOT NULL);
 IF OBJECT_ID(N'[SmsLogs]',N'U') IS NULL CREATE TABLE [SmsLogs]([Id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_SmsLogs] PRIMARY KEY,[SentAt] datetime2 NOT NULL,[Kind] nvarchar(50) NOT NULL,[Recipient] nvarchar(50) NOT NULL,[Message] nvarchar(max) NOT NULL,[Success] bit NOT NULL,[Response] nvarchar(max) NOT NULL);
+IF COL_LENGTH('SmsLogs','MessageId') IS NULL
+BEGIN
+ ALTER TABLE [SmsLogs] ADD [MessageId] nvarchar(100) NOT NULL CONSTRAINT [DF_SmsLogs_MessageId] DEFAULT N'';
+ ALTER TABLE [SmsLogs] ADD [DeliveryStatus] nvarchar(max) NOT NULL CONSTRAINT [DF_SmsLogs_DeliveryStatus] DEFAULT N'';
+ ALTER TABLE [SmsLogs] ADD [StatusCheckedAt] datetime2 NULL;
+END;
 -- Stock-unit quantities need 10 decimals so 10 eggs of a 180-egg carton (0.0555555556 کارتن) add back up exactly.
 DECLARE @qtyColumns TABLE([TableName] sysname,[ColumnName] sysname);
 INSERT INTO @qtyColumns VALUES(N'StockEntries',N'Quantity'),(N'StockWithdrawals',N'Quantity'),(N'Materials',N'CurrentStock'),(N'Materials',N'MinStockLevel'),(N'WarehouseStocks',N'Quantity'),(N'WarehouseStocks',N'MinStockLevel'),(N'InventoryTransactions',N'IncomingQuantity'),(N'InventoryTransactions',N'OutgoingQuantity'),(N'InventoryTransactions',N'BalanceAfter'),(N'StockEntries',N'ConversionFactor'),(N'StockWithdrawals',N'ConversionFactor');

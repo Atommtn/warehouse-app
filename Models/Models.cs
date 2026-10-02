@@ -291,4 +291,8 @@ public class SmsLog
     public string Message { get; set; } = "";
     public bool Success { get; set; }
     public string Response { get; set; } = "";
+    // Asanak msgid, used to ask msgstatus whether the message was delivered.
+    public string MessageId { get; set; } = "";
+    public string DeliveryStatus { get; set; } = "";
+    public DateTime? StatusCheckedAt { get; set; }
 }

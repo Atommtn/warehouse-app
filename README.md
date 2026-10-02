@@ -75,11 +75,13 @@ http://[IP-سرور]:8080
 
 ## 📱 پیامک هشدار (آسانک)
 
-اطلاعات پنل را در فایل `.env` کنار `docker-compose.yml` بگذارید (این فایل در گیت نیست):
+همه‌ی رمزها (دیتابیس و پنل پیامک) فقط در فایل `.env` کنار `docker-compose.yml` هستند؛ این فایل در گیت ذخیره نمی‌شود.
+از روی نمونه بسازید: `cp .env.example .env` و مقدارها را پر کنید:
 ```
+DB_CONNECTION=Server=sql2019,1433;Database=WarehouseDB;User Id=sa;Password=...;TrustServerCertificate=True;
 SMS_USERNAME=haveshapp
-SMS_PASSWORD=...
-SMS_SOURCE=9821XXXXXXXX
+API_CODE=...   # کد API / رمز پنل آسانک
+SMS_SOURCE=989982008512
 ```
 گیرنده‌ها، ساعت خلاصه‌ی روزانه و پیامک فوری از صفحه‌ی «هشدارها» (فقط مدیر) تنظیم می‌شوند.
 متن پیامک کوتاه و کدی است: `WH 0710 / L3:01014,01038 / E1:01100 / X0` — L موجودی کم، E در آستانه‌ی انقضا، X منقضی.

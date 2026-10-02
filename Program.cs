@@ -9,7 +9,7 @@ builder.Services.AddServerSideBlazor();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
-    ?? "Server=sql2019,1433;Database=WarehouseDB;User Id=sa;Password=Mohammad1111;TrustServerCertificate=True;";
+    ?? throw new InvalidOperationException("Connection string missing: set DB_CONNECTION in .env");
 
 builder.Services.AddDbContextFactory<AppDbContext>(options =>
     options.UseSqlServer(connectionString));

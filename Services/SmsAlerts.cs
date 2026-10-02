@@ -10,6 +10,7 @@ namespace WarehouseApp.Services;
 public class SmsOptions
 {
     public string Url { get; set; } = "https://panel.asanak.com/webservice/v2rest/sendsms";
+    public string StatusUrl { get; set; } = "https://panel.asanak.com/webservice/v2rest/msgstatus";
     public string Username { get; set; } = "";
     public string Password { get; set; } = "";
     public string Source { get; set; } = "";
@@ -106,7 +107,7 @@ public class SmsService
     /// <summary>Sends one message to each recipient and logs every attempt. Returns how many were accepted.</summary>
     public async Task<int> SendAsync(IEnumerable<string> recipients, string message, string kind)
     {
-        if (!_options.IsConfigured) throw new Exception("اطلاعات پنل پیامک (Sms__Username، Sms__Password، Sms__Source) در فایل env سرور تنظیم نشده است");
+        if (!_options.IsConfigured) throw new Exception("اطلاعات پنل پیامک (SMS_USERNAME، API_CODE، SMS_SOURCE) در فایل .env سرور تنظیم نشده است");
         var ok = 0;
         foreach (var to in recipients.Select(NormalizeNumber).Where(n => n != null).Distinct())
         {
@@ -122,6 +123,7 @@ public class SmsService
                 var body = await response.Content.ReadAsStringAsync();
                 log.Response = $"{(int)response.StatusCode} {Truncate(body, 900)}";
                 log.Success = response.IsSuccessStatusCode && !LooksLikeError(body);
+                log.MessageId = FindMessageId(body) ?? "";
             }
             catch (Exception ex) { log.Response = Truncate(ex.Message, 900); _log.LogWarning(ex, "SMS to {To} failed", to); }
             if (log.Success) ok++;
@@ -129,6 +131,79 @@ public class SmsService
             db.SmsLogs.Add(log); await db.SaveChangesAsync();
         }
         return ok;
+    }
+
+    /// <summary>Asks Asanak (msgstatus) about recent messages that have a msgid; returns how many were checked.</summary>
+    public async Task<int> RefreshStatusesAsync(int take = 30)
+    {
+        if (!_options.IsConfigured) return 0;
+        await using var db = await _factory.CreateDbContextAsync();
+        var logs = await db.SmsLogs.Where(x => x.MessageId != "").OrderByDescending(x => x.Id).Take(take).ToListAsync();
+        foreach (var log in logs)
+        {
+            try
+            {
+                using var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["username"] = _options.Username, ["password"] = _options.Password, ["msgid"] = log.MessageId });
+                var client = _http.CreateClient("sms"); client.Timeout = TimeSpan.FromSeconds(20);
+                var response = await client.PostAsync(_options.StatusUrl, content);
+                log.DeliveryStatus = Truncate(DescribeStatus(await response.Content.ReadAsStringAsync()), 500);
+            }
+            catch (Exception ex) { log.DeliveryStatus = Truncate("خطا: " + ex.Message, 500); }
+            log.StatusCheckedAt = DateTime.Now;
+        }
+        await db.SaveChangesAsync();
+        return logs.Count;
+    }
+
+    // The msgid may be a number, a string or a one-item array anywhere in the JSON (e.g. data.msgid[0]).
+    private static string? FindMessageId(string body)
+    {
+        try { using var doc = JsonDocument.Parse(body); return Find(doc.RootElement); }
+        catch (JsonException) { return null; }
+        static string? Find(JsonElement e)
+        {
+            switch (e.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (var p in e.EnumerateObject())
+                    {
+                        if (p.Name.Equals("msgid", StringComparison.OrdinalIgnoreCase) || p.Name.Equals("msg_id", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var v = p.Value.ValueKind == JsonValueKind.Array ? p.Value.EnumerateArray().FirstOrDefault() : p.Value;
+                            if (v.ValueKind is JsonValueKind.Number or JsonValueKind.String) return v.ToString();
+                        }
+                        if (Find(p.Value) is { } inner) return inner;
+                    }
+                    return null;
+                case JsonValueKind.Array:
+                    foreach (var x in e.EnumerateArray()) if (Find(x) is { } inner) return inner;
+                    return null;
+                default: return null;
+            }
+        }
+    }
+
+    // Shows the status text Asanak returns (a "status"/"message" field when present, else the raw answer).
+    private static string DescribeStatus(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            string? Pick(JsonElement e, params string[] names)
+            {
+                if (e.ValueKind == JsonValueKind.Object)
+                    foreach (var p in e.EnumerateObject())
+                    {
+                        if (names.Any(n => p.Name.Equals(n, StringComparison.OrdinalIgnoreCase)) && p.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number) return p.Value.ToString();
+                        if (Pick(p.Value, names) is { } inner) return inner;
+                    }
+                if (e.ValueKind == JsonValueKind.Array) foreach (var x in e.EnumerateArray()) if (Pick(x, names) is { } inner) return inner;
+                return null;
+            }
+            var data = doc.RootElement.TryGetProperty("data", out var d) ? d : doc.RootElement;
+            return Pick(data, "status", "state", "message") is { } s ? $"{s} — {body}" : body;
+        }
+        catch (JsonException) { return body; }
     }
 
     private static string Truncate(string s, int n) => s.Length <= n ? s : s[..n];
