@@ -15,7 +15,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
             <h3>📱 پیامک هشدار</h3>
             @if (Sms.IsConfigured) { <span class="status-badge ok">پنل آسانک وصل است — خط @Sms.Source</span> }
-            else { <span class="status-badge danger">پنل پیامک تنظیم نشده (SMS_USERNAME / API_CODE / SMS_SOURCE در فایل .env)</span> }
+            else { <span class="status-badge danger">پنل پیامک تنظیم نشده (SMS_USERNAME / SMS_PASSWORD / API_CODE / SMS_SOURCE در فایل .env)</span> }
         </div>
         @if (smsSettings != null)
         {

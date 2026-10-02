@@ -12,10 +12,12 @@ public class SmsOptions
     public string Url { get; set; } = "https://panel.asanak.com/webservice/v2rest/sendsms";
     public string StatusUrl { get; set; } = "https://panel.asanak.com/webservice/v2rest/msgstatus";
     // Trimmed: a .env saved on Windows leaves "\r" (or a stray space/quote) at the end, which the panel rejects as a wrong password.
-    private string _username = "", _password = "", _source = "";
+    private string _username = "", _password = "", _source = "", _apiCode = "";
     public string Username { get => _username; set => _username = Clean(value); }
     public string Password { get => _password; set => _password = Clean(value); }
     public string Source { get => _source; set => _source = Clean(value); }
+    // Sent as the "API" field next to the password when the panel has an API code.
+    public string ApiCode { get => _apiCode; set => _apiCode = Clean(value); }
     private static string Clean(string? v) => (v ?? "").Trim().Trim('"', '\'').Trim();
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Username) && !string.IsNullOrWhiteSpace(Password) && !string.IsNullOrWhiteSpace(Source);
 }
@@ -120,23 +122,25 @@ public class SmsService
     /// <summary>Sends one message to each recipient and logs every attempt. Returns how many were accepted.</summary>
     public async Task<int> SendAsync(IEnumerable<string> recipients, string message, string kind)
     {
-        if (!_options.IsConfigured) throw new Exception("اطلاعات پنل پیامک (SMS_USERNAME، API_CODE، SMS_SOURCE) در فایل .env سرور تنظیم نشده است");
+        if (!_options.IsConfigured) throw new Exception("اطلاعات پنل پیامک (SMS_USERNAME، SMS_PASSWORD، SMS_SOURCE) در فایل .env سرور تنظیم نشده است");
         var ok = 0;
         foreach (var to in recipients.Select(NormalizeNumber).Where(n => n != null).Distinct())
         {
             var log = new SmsLog { Kind = kind, Recipient = to!, Message = message };
             try
             {
-                using var content = new FormUrlEncodedContent(new Dictionary<string, string>
+                var form = new Dictionary<string, string>
                 {
                     ["username"] = _options.Username, ["password"] = _options.Password, ["source"] = _options.Source, ["message"] = message, ["destination"] = to!,
-                });
+                };
+                if (_options.ApiCode != "") form["API"] = _options.ApiCode;
+                using var content = new FormUrlEncodedContent(form);
                 var client = _http.CreateClient("sms"); client.Timeout = TimeSpan.FromSeconds(20);
                 var response = await client.PostAsync(_options.Url, content);
                 var body = await response.Content.ReadAsStringAsync();
                 log.Response = $"{(int)response.StatusCode} {Truncate(body, 900)}";
                 log.Success = response.IsSuccessStatusCode && !LooksLikeError(body);
-                if (body.Contains("\"status\":1008")) log.Response = "نام کاربری یا رمز وب‌سرویس آسانک اشتباه است (SMS_USERNAME / API_CODE در .env) — " + log.Response;
+                if (body.Contains("\"status\":1008")) log.Response = "نام کاربری یا رمز وب‌سرویس آسانک اشتباه است (SMS_USERNAME / SMS_PASSWORD / API_CODE در .env) — " + log.Response;
                 log.MessageId = FindMessageId(body) ?? "";
             }
             catch (Exception ex) { log.Response = Truncate(ex.Message, 900); _log.LogWarning(ex, "SMS to {To} failed", to); }
@@ -157,7 +161,9 @@ public class SmsService
         {
             try
             {
-                using var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["username"] = _options.Username, ["password"] = _options.Password, ["msgid"] = log.MessageId });
+                var form = new Dictionary<string, string> { ["username"] = _options.Username, ["password"] = _options.Password, ["msgid"] = log.MessageId };
+                if (_options.ApiCode != "") form["API"] = _options.ApiCode;
+                using var content = new FormUrlEncodedContent(form);
                 var client = _http.CreateClient("sms"); client.Timeout = TimeSpan.FromSeconds(20);
                 var response = await client.PostAsync(_options.StatusUrl, content);
                 log.DeliveryStatus = Truncate(DescribeStatus(await response.Content.ReadAsStringAsync()), 500);
@@ -169,10 +175,19 @@ public class SmsService
         return logs.Count;
     }
 
-    // The msgid may be a number, a string or a one-item array anywhere in the JSON (e.g. data.msgid[0]).
+    // Asanak answers {"meta":{...},"data":[5398966787]}; a "msgid" field anywhere is accepted too.
     private static string? FindMessageId(string body)
     {
-        try { using var doc = JsonDocument.Parse(body); return Find(doc.RootElement); }
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("data", out var data))
+            {
+                var first = data.ValueKind == JsonValueKind.Array ? data.EnumerateArray().FirstOrDefault() : data;
+                if (first.ValueKind is JsonValueKind.Number or JsonValueKind.String) return first.ToString();
+            }
+            return Find(doc.RootElement);
+        }
         catch (JsonException) { return null; }
         static string? Find(JsonElement e)
         {

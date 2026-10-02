@@ -80,7 +80,8 @@ http://[IP-سرور]:8080
 ```
 DB_CONNECTION=Server=sql2019,1433;Database=WarehouseDB;User Id=sa;Password=...;TrustServerCertificate=True;
 SMS_USERNAME=haveshapp
-API_CODE=...   # کد API / رمز پنل آسانک
+SMS_PASSWORD=...   # رمز پنل آسانک
+API_CODE=...       # کد API پنل آسانک
 SMS_SOURCE=989982008512
 ```
 گیرنده‌ها، ساعت خلاصه‌ی روزانه و پیامک فوری از صفحه‌ی «هشدارها» (فقط مدیر) تنظیم می‌شوند.
