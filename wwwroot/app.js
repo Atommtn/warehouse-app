@@ -34,3 +34,22 @@ window.downloadFile = (base64, filename) => {
         el.setSelectionRange(pos, pos);
     }, true);
 })();
+
+// In-app history: each page switch adds a browser history entry, so Back returns to the previous page.
+// The first entry is a guard that keeps Back from leaving the app.
+window.appNav = {
+    ref: null,
+    init(ref, page) {
+        this.ref = ref;
+        history.replaceState({ appGuard: true, page }, '');
+        history.pushState({ page }, '');
+        if (this.bound) return;
+        this.bound = true;
+        window.addEventListener('popstate', e => {
+            const s = e.state || {};
+            if (s.appGuard) history.pushState({ page: s.page }, '');
+            if (s.page && this.ref) this.ref.invokeMethodAsync('OnBrowserBack', s.page);
+        });
+    },
+    push(page) { history.pushState({ page }, ''); }
+};

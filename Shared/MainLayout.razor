@@ -1,6 +1,8 @@
 @using WarehouseApp.Services
 @inject AuthService Auth
 @inject WarehouseService Warehouse
+@inject IJSRuntime JS
+@implements IDisposable
 
 <div class="app-shell">
     <div class="mobile-header">
@@ -121,7 +123,27 @@
         pendingCount = stats.pendingCount;
     }
 
-    void Go(string p) { Open(p); page = p; sidebarOpen = false; }
+    void Go(string p)
+    {
+        if (p != page) _ = PushHistory(p);
+        Open(p); page = p; sidebarOpen = false;
+    }
+
+    // The browser Back button walks back through the pages opened here instead of leaving the app (see appNav in app.js).
+    DotNetObjectReference<MainLayout>? navRef;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        navRef = DotNetObjectReference.Create(this);
+        try { await JS.InvokeVoidAsync("appNav.init", navRef, page); } catch (JSException) { }
+    }
+    async Task PushHistory(string p) { try { await JS.InvokeVoidAsync("appNav.push", p); } catch (Exception) { } }
+    [JSInvokable] public void OnBrowserBack(string p)
+    {
+        if (string.IsNullOrEmpty(p) || (p != "users" && !Auth.CanAccess(p)) || (p == "users" && !Auth.IsAdmin)) return;
+        Open(p); page = p; sidebarOpen = false; StateHasChanged();
+    }
+    public void Dispose() => navRef?.Dispose();
     void GoTab(string tab) { Go("definitions"); defsTab = tab; }
 
     void Open(string p)
