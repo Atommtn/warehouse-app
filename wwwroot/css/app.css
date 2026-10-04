@@ -517,7 +517,7 @@ code { background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:.78rem;
 .legacy-unit-choice { display:flex; align-items:center; gap:.5rem; min-height:42px; font-size:.86rem; }
 .quantity-with-action { display:flex; gap:.5rem; }
 .quantity-with-action input { min-width:0; }
-.recipe-ingredient-card { display:grid; grid-template-columns:minmax(170px,.8fr) minmax(300px,2fr) minmax(110px,.5fr) minmax(130px,.6fr) auto; gap:.75rem; align-items:end; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:.85rem; margin-bottom:.75rem; }
+.recipe-ingredient-card { display:grid; grid-template-columns:minmax(300px,2.6fr) minmax(110px,.5fr) minmax(130px,.6fr) auto; gap:.75rem; align-items:end; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:.85rem; margin-bottom:.75rem; }
 .recipe-remove { margin-bottom:1px; }
 .table-actions { display:flex; gap:.4rem; flex-wrap:wrap; }
 @media (max-width:1000px) { .unit-conversion-card,.recipe-ingredient-card { grid-template-columns:1fr 1fr; } }
@@ -532,3 +532,28 @@ code { background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:.78rem;
 .total-hint { color:var(--text-muted); font-size:.8rem; }
 .row-muted td { color:var(--text-muted); }
 .unit-preview { display:flex; flex-wrap:wrap; gap:.5rem; margin:1rem 0; }
+
+/* ── Open page tabs ── */
+.page-tabs { display:flex; gap:.35rem; flex-wrap:wrap; margin:-.5rem 0 1rem; border-bottom:2px solid var(--border); padding-bottom:.4rem; }
+.page-tab { display:flex; align-items:center; gap:.25rem; padding:.35rem .7rem; background:var(--surface); border:1px solid var(--border); border-radius:8px 8px 0 0; cursor:pointer; font-size:.85rem; max-width:200px; }
+.page-tab:hover { background:var(--bg); }
+.page-tab.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+.page-tab-title { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.page-tab-btn { background:none; border:none; color:inherit; cursor:pointer; font-size:1rem; line-height:1; padding:0 .15rem; opacity:.7; font-family:inherit; }
+.page-tab-btn:hover { opacity:1; }
+
+/* ── Live material search ── */
+.picker { position:relative; }
+.picker-box { position:relative; }
+.picker-input { width:100%; padding-left:2rem; }
+.picker-clear { position:absolute; left:.4rem; top:50%; transform:translateY(-50%); background:none; border:none; font-size:1.2rem; color:var(--text-muted); cursor:pointer; }
+.picker-list { position:absolute; z-index:50; top:100%; right:0; left:0; margin-top:2px; max-height:280px; overflow-y:auto; list-style:none; background:var(--surface); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow-md); }
+.picker-list li { padding:.45rem .7rem; cursor:pointer; font-size:.88rem; border-bottom:1px solid var(--bg); }
+.picker-list li:hover, .picker-list li.hl { background:#e8effd; }
+.picker-list li.sel { font-weight:600; color:var(--primary); }
+.picker-list li small { color:var(--text-muted); }
+.picker-list li.picker-none { color:var(--text-muted); cursor:default; font-size:.8rem; }
+.picker-list li.picker-empty { color:var(--text-muted); }
+
+/* ── Money inputs ── */
+.money-input { direction:ltr; text-align:right; font-variant-numeric:tabular-nums; }

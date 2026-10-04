@@ -10,11 +10,7 @@
         <div class="form-group"><label>انبار مبدأ *</label><select class="form-input" value="@warehouseId" @onchange="OnWarehouseChange"><option value="0">انتخاب کنید...</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
         <div class="form-group">
             <label>ماده اولیه *</label>
-            <input value="@materialSearch" @oninput="OnMaterialSearch" class="form-input" placeholder="🔍 جستجوی نام یا کد ماده..." />
-            <select value="@selId" @onchange="OnMaterialChange" class="form-input">
-                <option value="0">انتخاب کنید...</option>
-                @foreach (var m in materials) { <option value="@m.Id">[@m.Code] @m.Name — @display.Format(m.CurrentStock, m)</option> }
-            </select>
+            <MaterialPicker Items="materials" Value="selId" ValueChanged="id=>OnMaterialChange(new ChangeEventArgs{Value=id})" Detail="m=>display.Format(m.CurrentStock, m)" />
             @if (sel != null) { <small class="form-hint">موجودی این انبار: @display.Format(selectedStock, sel)</small> }
         </div>
         <div class="form-group">

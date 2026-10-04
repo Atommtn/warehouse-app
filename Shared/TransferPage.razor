@@ -8,8 +8,7 @@
     <div class="form-grid">
         <div class="form-group"><label>انبار مبدأ *</label><select class="form-input" value="@sourceId" @onchange="SourceChanged"><option value="0">انتخاب کنید...</option>@foreach(var w in warehouses){<option value="@w.Id">@w.Name</option>}</select></div>
         <div class="form-group"><label>انبار مقصد *</label><select class="form-input" @bind="destinationId"><option value="0">انتخاب کنید...</option>@foreach(var w in warehouses.Where(x=>x.Id!=sourceId)){<option value="@w.Id">@w.Name</option>}</select></div>
-        <div class="form-group"><label>جستجوی کالا</label><input class="form-input" @bind="search" @bind:event="oninput" placeholder="نام یا کد کالا..." /></div>
-        <div class="form-group"><label>کالا *</label><select class="form-input" value="@materialId" @onchange="MaterialChanged"><option value="0">انتخاب کنید...</option>@foreach(var m in FilteredMaterials){<option value="@m.Id">[@m.Code] @m.Name</option>}</select></div>
+        <div class="form-group"><label>کالا *</label><MaterialPicker Items="materials" Value="materialId" ValueChanged="id=>MaterialChanged(new ChangeEventArgs{Value=id})" /></div>
         <div class="form-group"><label>واحد انتقال *</label><select class="form-input" value="@unitName" @onchange="UnitChanged">@foreach(var u in units){<option value="@u.UnitName">@u.UnitName</option>}</select></div>
         <div class="form-group"><label>مقدار انتقال *</label><div class="quantity-with-action"><input class="form-input" type="number" step="0.001" min="0" max="@AvailableInSelectedUnit" @bind="quantity" /><button type="button" class="btn btn-secondary btn-sm" @onclick="UseAll">انتقال همه</button></div><small class="form-hint">موجودی قابل انتقال: <strong>@AvailableInSelectedUnit.ToString("N3") @unitName</strong> (@availableBase.ToString("N3") @SelectedMaterial?.BaseUnitName)</small></div>
         <div class="form-group"><label>تاریخ انتقال</label><PersianDatePicker Value="date" ValueChanged="@(x=>date=x)" /></div>
@@ -22,11 +21,10 @@
 @code {
     List<Warehouse> warehouses=new(); List<Material> materials=new(); List<MaterialUnitConversion> units=new();
     int sourceId,destinationId,materialId; decimal quantity,availableBase; DateTime date=DateTime.Today;
-    string notes="",search="",message="",unitName=""; bool success;
+    string notes="",message="",unitName=""; bool success;
     Material? SelectedMaterial=>materials.FirstOrDefault(x=>x.Id==materialId);
     MaterialUnitConversion? SelectedConversion=>units.FirstOrDefault(x=>x.UnitName==unitName);
     decimal AvailableInSelectedUnit=>availableBase/(SelectedConversion?.FactorToBaseUnit>0?SelectedConversion.FactorToBaseUnit:1);
-    IEnumerable<Material> FilteredMaterials=>string.IsNullOrWhiteSpace(search)?materials:materials.Where(x=>x.Name.Contains(search,StringComparison.OrdinalIgnoreCase)||x.Code.Contains(search,StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnInitializedAsync(){warehouses=await WarehouseService.GetWarehousesAsync();materials=await WarehouseService.GetMaterialsAsync();}
     async Task SourceChanged(ChangeEventArgs e){sourceId=int.TryParse(e.Value?.ToString(),out var id)?id:0;if(destinationId==sourceId)destinationId=0;await LoadAvailability(true);}

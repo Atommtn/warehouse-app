@@ -1,0 +1,96 @@
+@* Searchable material selector: the match list opens under the box and narrows on every keystroke, no Enter needed. *@
+<div class="picker">
+    <div class="picker-box">
+        <input class="form-input picker-input" value="@InputText" placeholder="@Placeholder" autocomplete="off"
+               @onfocus="Open" @oninput="OnInput" @onblur="Close" @onkeydown="OnKey" />
+        @if (Value > 0 && !editing)
+        {
+            <button type="button" class="picker-clear" title="پاک کردن" @onmousedown:preventDefault @onclick="Clear">×</button>
+        }
+    </div>
+    @if (open)
+    {
+        var matches = Matches.ToList();
+        <ul class="picker-list">
+            @if (!string.IsNullOrEmpty(EmptyText))
+            {
+                <li class="picker-empty" @onmousedown:preventDefault @onmousedown="() => Choose(0)">@EmptyText</li>
+            }
+            @for (var i = 0; i < matches.Count; i++)
+            {
+                var m = matches[i]; var idx = i;
+                <li class="@(m.Id == Value ? "sel" : "") @(idx == highlight ? "hl" : "")" @onmousedown:preventDefault @onmousedown="() => Choose(m.Id)">
+                    <code>@m.Code</code> @m.Name
+                    @if (Detail != null) { <small> — @Detail(m)</small> }
+                </li>
+            }
+            @if (matches.Count == 0) { <li class="picker-none">موردی پیدا نشد</li> }
+            @if (total > MaxShown) { <li class="picker-none">@(total - MaxShown) مورد دیگر؛ عبارت دقیق‌تری تایپ کنید</li> }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public IEnumerable<Material> Items { get; set; } = Enumerable.Empty<Material>();
+    [Parameter] public int Value { get; set; }
+    [Parameter] public EventCallback<int> ValueChanged { get; set; }
+    [Parameter] public Func<Material, string>? Detail { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "🔍 نام یا کد ماده را تایپ کنید...";
+    /// <summary>When set, offers a "none / all" choice that sets the value to 0.</summary>
+    [Parameter] public string? EmptyText { get; set; }
+
+    const int MaxShown = 100;
+    string query = ""; bool open, editing; int highlight = -1, total;
+
+    Material? Selected => Value > 0 ? Items.FirstOrDefault(x => x.Id == Value) : null;
+    string InputText => editing ? query : Selected is { } s ? $"[{s.Code}] {s.Name}" : "";
+
+    IEnumerable<Material> Matches
+    {
+        get
+        {
+            var q = Normalize(query.Trim());
+            var all = string.IsNullOrEmpty(q) ? Items.ToList()
+                : Items.Where(m => Normalize(m.Name).Contains(q, StringComparison.OrdinalIgnoreCase) || Normalize(m.Code).Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+            total = all.Count;
+            return all.Take(MaxShown);
+        }
+    }
+
+    // Treat Arabic ي/ك and Persian ی/ک (and Persian digits) as the same so typing on either keyboard finds the item.
+    static string Normalize(string? s) => string.IsNullOrEmpty(s) ? "" : new string(s.Select(c => c switch
+    {
+        'ي' or 'ى' => 'ی', 'ك' => 'ک',
+        >= '۰' and <= '۹' => (char)('0' + (c - '۰')),
+        >= '٠' and <= '٩' => (char)('0' + (c - '٠')),
+        _ => c
+    }).ToArray());
+
+    void Open() { open = true; editing = true; query = ""; highlight = -1; }
+    void OnInput(ChangeEventArgs e) { query = e.Value?.ToString() ?? ""; open = true; editing = true; highlight = -1; }
+    void Close() { open = false; editing = false; query = ""; }
+
+    async Task Choose(int id)
+    {
+        open = false; editing = false; query = "";
+        if (id != Value) { Value = id; await ValueChanged.InvokeAsync(id); }
+    }
+
+    async Task Clear() => await Choose(0);
+
+    async Task OnKey(KeyboardEventArgs e)
+    {
+        if (!open) { if (e.Key is "ArrowDown") { open = true; editing = true; } return; }
+        var list = Matches.ToList();
+        switch (e.Key)
+        {
+            case "ArrowDown": highlight = Math.Min(highlight + 1, list.Count - 1); break;
+            case "ArrowUp": highlight = Math.Max(highlight - 1, -1); break;
+            case "Enter":
+                if (highlight >= 0 && highlight < list.Count) await Choose(list[highlight].Id);
+                else if (list.Count > 0) await Choose(list[0].Id);
+                break;
+            case "Escape": Close(); break;
+        }
+    }
+}

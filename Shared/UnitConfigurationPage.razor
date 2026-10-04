@@ -12,8 +12,7 @@
 
 <div class="form-card">
     <div class="form-grid">
-        <div class="form-group"><label>جستجوی ماده</label><input class="form-input" @bind="search" @bind:event="oninput" placeholder="نام یا کد..."/></div>
-        <div class="form-group"><label>ماده</label><select class="form-input" value="@materialId" @onchange="SelectMaterial"><option value="0">انتخاب کنید...</option>@foreach(var m in FilteredMaterials){<option value="@m.Id">[@m.Code] @m.Name</option>}</select></div>
+        <div class="form-group"><label>ماده</label><MaterialPicker Items="materials" Value="materialId" ValueChanged="id=>SelectMaterial(new ChangeEventArgs{Value=id})" /></div>
         @if(materialId>0)
         {
             <div class="form-group"><label>واحد موجودی</label><select class="form-input" value="@StockUnitValue" @onchange="StockUnitChanged">@foreach(var u in UnitChoices){<option value="@u">@u</option>}</select><small class="form-hint">موجودی انبار با این واحد نمایش داده می‌شود</small></div>

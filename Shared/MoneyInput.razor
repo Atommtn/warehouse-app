@@ -1,0 +1,32 @@
+@* Money box with thousands separators; app.js regroups the digits while typing. *@
+@using System.Globalization
+<input type="text" inputmode="decimal" autocomplete="off" class="form-input money-input @Class" placeholder="0"
+       value="@Format(Value)" @onchange="OnChange" @attributes="Extra" />
+
+@code {
+    [Parameter] public decimal Value { get; set; }
+    [Parameter] public EventCallback<decimal> ValueChanged { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? Extra { get; set; }
+
+    static string Format(decimal v) => v == 0 ? "" : v.ToString("#,0.####", CultureInfo.InvariantCulture);
+
+    public static decimal Parse(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return 0;
+        var latin = new string(text.Select(c => c switch
+        {
+            >= '۰' and <= '۹' => (char)('0' + (c - '۰')),
+            >= '٠' and <= '٩' => (char)('0' + (c - '٠')),
+            '٫' => '.',
+            _ => c
+        }).Where(c => char.IsDigit(c) || c == '.' || c == '-').ToArray());
+        return decimal.TryParse(latin, NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? v : 0;
+    }
+
+    async Task OnChange(ChangeEventArgs e)
+    {
+        Value = Parse(e.Value?.ToString());
+        await ValueChanged.InvokeAsync(Value);
+    }
+}
