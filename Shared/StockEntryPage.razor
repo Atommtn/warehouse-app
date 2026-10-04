@@ -23,8 +23,7 @@
             {
                 <div class="form-group">
                     <label>مبلغ کل فاکتور (ریال) *</label>
-                    <input @bind="total" @bind:event="oninput" type="number" min="0" class="form-input" />
-                    @if (total > 0) { <small class="form-hint">@UnitSet.N(total, 0) ریال</small> }
+                    <MoneyInput @bind-Value="total" Live="true" />
                 </div>
             }
             <div class="form-group">
@@ -83,7 +82,7 @@ else
             {
                 <div class="form-group">
                     <label>مبلغ کل (ریال) *</label>
-                    <input @bind="eTotal" @bind:event="oninput" type="number" min="0" class="form-input" />
+                    <MoneyInput @bind-Value="eTotal" Live="true" />
                 </div>
             }
             <div class="form-group">

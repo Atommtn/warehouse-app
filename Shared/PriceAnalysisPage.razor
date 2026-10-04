@@ -172,7 +172,7 @@ else
                                                                 </span>
                                                             }
                                                         </td>
-                                                        <td>@if(editPriceEntryId==h.EntryId){<div class="inline-form"><input type="number" class="form-input" @bind="editPrice"/><button class="btn btn-primary btn-sm" @onclick="()=>SavePrice(h.EntryId)">ذخیره</button></div>}else{<button class="btn-icon" @onclick="()=>StartPriceEdit(h)">✏️</button>}</td>
+                                                        <td>@if(editPriceEntryId==h.EntryId){<div class="inline-form"><MoneyInput @bind-Value="editPrice" /><button class="btn btn-primary btn-sm" @onclick="()=>SavePrice(h.EntryId)">ذخیره</button></div>}else{<button class="btn-icon" @onclick="()=>StartPriceEdit(h)">✏️</button>}</td>
                                                     }
                                                 </tr>
                                             }

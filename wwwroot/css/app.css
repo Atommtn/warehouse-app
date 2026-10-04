@@ -593,3 +593,15 @@ code { background:#f3f4f6; padding:2px 6px; border-radius:4px; font-size:.78rem;
 .segmented button + button { border-inline-start: 1px solid var(--border); }
 .segmented button.on { background: var(--primary); color: #fff; }
 .days-left.low { color: var(--danger); font-weight: 600; }
+
+/* ── Open page tabs ── */
+.page-tabs { display:flex; gap:.35rem; flex-wrap:wrap; margin:-.5rem 0 1rem; border-bottom:2px solid var(--border); padding-bottom:.4rem; }
+.page-tab { display:flex; align-items:center; gap:.25rem; padding:.35rem .7rem; background:var(--surface); border:1px solid var(--border); border-radius:8px 8px 0 0; cursor:pointer; font-size:.85rem; max-width:200px; }
+.page-tab:hover { background:var(--bg); }
+.page-tab.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+.page-tab-title { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.page-tab-btn { background:none; border:none; color:inherit; cursor:pointer; font-size:1rem; line-height:1; padding:0 .15rem; opacity:.7; font-family:inherit; }
+.page-tab-btn:hover { opacity:1; }
+
+/* ── Money inputs ── */
+.money-input { direction:ltr; text-align:right; font-variant-numeric:tabular-nums; }

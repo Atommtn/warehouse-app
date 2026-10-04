@@ -6,3 +6,31 @@ window.downloadFile = (base64, filename) => {
     link.click();
     document.body.removeChild(link);
 };
+
+// Thousands separators for .money-input boxes, applied while typing.
+// Runs in the capture phase so Blazor reads the already-grouped text; the caret stays after the same digit.
+(function () {
+    const toLatin = s => s.replace(/[۰-۹]/g, d => String.fromCharCode(d.charCodeAt(0) - 1728))
+                          .replace(/[٠-٩]/g, d => String.fromCharCode(d.charCodeAt(0) - 1584))
+                          .replace(/٫/g, '.');
+    const group = raw => {
+        let s = toLatin(raw).replace(/[^\d.]/g, '');
+        const dot = s.indexOf('.');
+        let int = dot >= 0 ? s.slice(0, dot) : s;
+        const frac = dot >= 0 ? '.' + s.slice(dot + 1).replace(/\./g, '') : '';
+        int = int.replace(/^0+(?=\d)/, '');
+        return int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + frac;
+    };
+    window.addEventListener('input', e => {
+        const el = e.target;
+        if (!el || !el.classList || !el.classList.contains('money-input')) return;
+        const caret = el.selectionStart ?? el.value.length;
+        const digitsBefore = toLatin(el.value.slice(0, caret)).replace(/[^\d.]/g, '').length;
+        const formatted = group(el.value);
+        if (formatted === el.value) return;
+        el.value = formatted;
+        let pos = 0, seen = 0;
+        while (pos < formatted.length && seen < digitsBefore) { if (formatted[pos] !== ',') seen++; pos++; }
+        el.setSelectionRange(pos, pos);
+    }, true);
+})();

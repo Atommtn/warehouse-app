@@ -21,8 +21,8 @@
         <div class="form-grid">
             <div class="form-group"><label>نام اموال *</label><input class="form-input" @bind="form.Name" placeholder="مثال: لیوان کافه، قالب تارت" /></div>
             <div class="form-group"><label>تعداد *</label><input class="form-input" type="number" step="1" min="0" @bind="form.Quantity" @bind:after="RecalcTotal" /></div>
-            <div class="form-group"><label>فی (ریال) *</label><input class="form-input" type="number" min="0" @bind="form.UnitPrice" @bind:after="RecalcTotal" /></div>
-            <div class="form-group"><label>قیمت کل (ریال)</label><input class="form-input" type="number" min="0" @bind="total" @bind:after="RecalcFromTotal" /><small class="total-hint">تعداد × فی؛ با وارد کردن قیمت کل، فی خودکار محاسبه می‌شود</small></div>
+            <div class="form-group"><label>فی (ریال) *</label><MoneyInput @bind-Value="form.UnitPrice" @bind-Value:after="RecalcTotal" /></div>
+            <div class="form-group"><label>قیمت کل (ریال)</label><MoneyInput @bind-Value="total" @bind-Value:after="RecalcFromTotal" /><small class="total-hint">تعداد × فی؛ با وارد کردن قیمت کل، فی خودکار محاسبه می‌شود</small></div>
             <div class="form-group"><label>محل نگهداری *</label><select class="form-input" @bind="form.Location"><option value="">انتخاب کنید...</option>@foreach(var l in locations){<option value="@l">@l</option>}</select></div>
             <div class="form-group"><label>تاریخ خرید</label><PersianDatePicker Value="@form.PurchaseDate" ValueChanged="@(d => form.PurchaseDate = d)" /></div>
             <div class="form-group"><label>توضیحات</label><input class="form-input" @bind="form.Notes" /></div>

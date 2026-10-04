@@ -81,33 +81,38 @@
     </nav>
 
     <main class="main-content" @onclick="CloseSidebar">
-        @if      (page == "dashboard" && Auth.CanAccess(page))       { <DashboardPage /> }
-        else if  (page == "materials" && Auth.CanAccess(page))       { <MaterialsPage /> }
-        else if  (page == "archive" && Auth.CanAccess(page))         { <ArchivePage /> }
-        else if  (page == "warehouses" && Auth.CanAccess(page))      { <WarehousesPage /> }
-        else if  (page == "unit-config" && Auth.CanAccess(page))      { <UnitConfigurationPage /> }
-        else if  (page == "definitions" && Auth.CanAccess(page))     { <DefinitionsPage DefaultTab="@defsTab" /> }
-        else if  (page == "entry" && Auth.CanAccess(page))           { <StockEntryPage /> }
-        else if  (page == "withdrawal" && Auth.CanAccess(page))      { <WithdrawalPage /> }
-        else if  (page == "transfer" && Auth.CanAccess(page))        { <TransferPage /> }
-        else if  (page == "warehouse-stock" && Auth.CanAccess(page)) { <WarehouseInventoryPage /> }
-        else if  (page == "cardex" && Auth.CanAccess(page))          { <CardexPage /> }
-        else if  (page == "history" && Auth.CanAccess(page))         { <HistoryPage /> }
-        else if  (page == "prices" && Auth.CanAccess(page))          { <PriceAnalysisPage /> }
-        else if  (page == "recipes" && Auth.CanAccess(page))         { <RecipePage /> }
-        else if  (page == "alerts" && Auth.CanAccess(page))          { <AlertsPage /> }
-        else if  (page == "assets" && Auth.CanAccess(page))          { <AssetsPage /> }
-        else if  (page == "users"      && Auth.IsAdmin)      { <UsersPage /> }
+        @* Up to MaxTabs pages stay mounted; hidden tabs keep their searches and half-filled forms. *@
+        <div class="page-tabs">
+            @foreach (var t in tabs)
+            {
+                var key = t.Key;
+                <div class="page-tab @(key == page ? "active" : "")" @key="key" @onclick="() => Go(key)" title="@Title(key)">
+                    <span class="page-tab-title">@Title(key)</span>
+                    @if (key == page) { <button class="page-tab-btn" title="بارگذاری مجدد" @onclick="() => Reload(key)" @onclick:stopPropagation>⟳</button> }
+                    @if (tabs.Count > 1) { <button class="page-tab-btn" title="بستن" @onclick="() => CloseTab(key)" @onclick:stopPropagation>×</button> }
+                </div>
+            }
+        </div>
+        @foreach (var t in tabs)
+        {
+            <div class="page-pane" style="@(t.Key == page ? "" : "display:none")" @key="(t.Key, t.Version)">
+                @RenderPage(t.Key)
+            </div>
+        }
     </main>
 </div>
 
 @code {
+    const int MaxTabs = 5;
+    class Tab { public string Key = ""; public int Version; }
+    readonly List<Tab> tabs = new();
+    readonly List<string> recent = new(); // most recently used last; the oldest is closed when a 6th tab opens
     string page = "dashboard";
     string defsTab = "units";
     int alertCount, pendingCount;
     bool sidebarOpen, defsOpen;
 
-    protected override async Task OnInitializedAsync(){if(!Auth.CanAccess(page))page=PageAccess.Pages.FirstOrDefault(x=>Auth.CanAccess(x.Key)).Key??"dashboard";await LoadCounts();}
+    protected override async Task OnInitializedAsync(){if(!Auth.CanAccess(page))page=PageAccess.Pages.FirstOrDefault(x=>Auth.CanAccess(x.Key)).Key??"dashboard";Open(page);await LoadCounts();}
 
     async Task LoadCounts()
     {
@@ -116,8 +121,55 @@
         pendingCount = stats.pendingCount;
     }
 
-    void Go(string p) { page = p; sidebarOpen = false; }
-    void GoTab(string tab) { page = "definitions"; defsTab = tab; sidebarOpen = false; }
+    void Go(string p) { Open(p); page = p; sidebarOpen = false; }
+    void GoTab(string tab) { Go("definitions"); defsTab = tab; }
+
+    void Open(string p)
+    {
+        recent.Remove(p); recent.Add(p);
+        if (tabs.Any(t => t.Key == p)) return;
+        if (tabs.Count >= MaxTabs)
+        {
+            var oldest = recent.First(k => k != p && tabs.Any(t => t.Key == k));
+            tabs.RemoveAll(t => t.Key == oldest); recent.Remove(oldest);
+        }
+        tabs.Add(new Tab { Key = p });
+    }
+
+    void CloseTab(string p)
+    {
+        if (tabs.Count <= 1) return;
+        var i = tabs.FindIndex(t => t.Key == p);
+        tabs.RemoveAt(i); recent.Remove(p);
+        if (page == p) page = recent.LastOrDefault() ?? tabs[Math.Min(i, tabs.Count - 1)].Key;
+    }
+
+    void Reload(string p) { var t = tabs.FirstOrDefault(x => x.Key == p); if (t != null) t.Version++; }
+
+    string Title(string p) => p == "definitions" ? "تعاریف اولیه" : PageAccess.Pages.FirstOrDefault(x => x.Key == p).Label ?? p;
+
+    RenderFragment RenderPage(string p) => p switch
+    {
+        _ when p != "users" && !Auth.CanAccess(p) => _ => { },
+        "dashboard"       => @<DashboardPage />,
+        "materials"       => @<MaterialsPage />,
+        "archive"         => @<ArchivePage />,
+        "warehouses"      => @<WarehousesPage />,
+        "unit-config"     => @<UnitConfigurationPage />,
+        "definitions"     => @<DefinitionsPage DefaultTab="@defsTab" />,
+        "entry"           => @<StockEntryPage />,
+        "withdrawal"      => @<WithdrawalPage />,
+        "transfer"        => @<TransferPage />,
+        "warehouse-stock" => @<WarehouseInventoryPage />,
+        "cardex"          => @<CardexPage />,
+        "history"         => @<HistoryPage />,
+        "prices"          => @<PriceAnalysisPage />,
+        "recipes"         => @<RecipePage />,
+        "alerts"          => @<AlertsPage />,
+        "assets"          => @<AssetsPage />,
+        "users" when Auth.IsAdmin => @<UsersPage />,
+        _ => _ => { }
+    };
     void ToggleDefs() => defsOpen = !defsOpen;
     bool IsDefinitions() => page == "definitions";
     string A(string p) => page == p ? "active" : "";
