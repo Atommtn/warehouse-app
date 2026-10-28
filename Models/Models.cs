@@ -213,6 +213,10 @@ public class Recipe
     public decimal PieceWeightGrams { get; set; } = 0;
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    // The Dasht (Sepidar POS) item this recipe makes; code and title are kept so the link reads even when Dasht is unreachable.
+    public int? DashtItemId { get; set; }
+    public string DashtItemCode { get; set; } = "";
+    public string DashtItemTitle { get; set; } = "";
     public List<RecipeIngredient> Ingredients { get; set; } = new();
 }
 

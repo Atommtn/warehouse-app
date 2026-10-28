@@ -1,6 +1,7 @@
 @using WarehouseApp.Services
 @using WarehouseApp.Models
 @inject WarehouseService Warehouse
+@inject DashtItemService Dasht
 
 <div class="page-header">
     <h2>🧁 رسپی‌ها</h2>
@@ -26,7 +27,7 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>نام رسپی</th><th>تعداد مواد</th><th>افت پخت %</th>
+                        <th>نام رسپی</th><th>کالای دشت</th><th>تعداد مواد</th><th>افت پخت %</th>
                         <th>وزن دانه (گ)</th><th>هزینه/کیلو</th><th>یادداشت</th><th>عملیات</th>
                     </tr>
                 </thead>
@@ -35,6 +36,7 @@
                     {
                         <tr>
                             <td>@r.Name</td>
+                            <td>@if (!string.IsNullOrEmpty(r.DashtItemCode)) { <code>@r.DashtItemCode</code> } else { <span class="text-muted">— وصل نشده</span> }</td>
                             <td>@r.Ingredients.Count</td>
                             <td>@r.BakingLossPercent%</td>
                             <td>@(r.PieceWeightGrams > 0 ? r.PieceWeightGrams.ToString("N0") : "-")</td>
@@ -60,6 +62,12 @@ else
     <div class="form-card">
         <h3>@(editId == 0 ? "رسپی جدید" : "ویرایش رسپی")</h3>
 
+        <div class="form-group">
+            <label>کالای دشت (این رسپی برای کدام کالای صندوق است؟)</label>
+            <DashtItemPicker Items="dashtItems" SelectedCode="@form.DashtItemCode" SelectedTitle="@form.DashtItemTitle" Picked="DashtItemPicked" Used="UsedBy" />
+            @if (!string.IsNullOrEmpty(dashtError)) { <small class="text-muted">⚠️ @dashtError — می‌توانید نام رسپی را دستی بنویسید و بعداً وصل کنید.</small> }
+            else if (string.IsNullOrEmpty(form.DashtItemCode)) { <small class="text-muted">کالا را انتخاب کنید تا نام رسپی از دشت پر شود؛ برای گزارش مصرف مواد بابت فروش لازم است.</small> }
+        </div>
         <div class="form-grid">
             <div class="form-group">
                 <label>نام رسپی *</label>
@@ -242,12 +250,30 @@ else
     RecipeCostResult? calcResult;
     decimal           profitPercent = 10;
 
+    List<DashtItem> dashtItems = new();
+    string dashtError = "";
+
     protected override async Task OnInitializedAsync()
     {
         materials = await Warehouse.GetMaterialsAsync();
         display = await Warehouse.GetStockDisplayAsync();
         await LoadRecipes();
+        (dashtItems, dashtError) = await Dasht.GetItemsAsync();
     }
+
+    void DashtItemPicked(DashtItem? item)
+    {
+        // The recipe name follows the Dasht title unless the user typed a different name on purpose.
+        var nameWasLinked = string.IsNullOrWhiteSpace(form.Name) || form.Name == form.DashtItemTitle;
+        form.DashtItemId    = item?.Id;
+        form.DashtItemCode  = item?.Code ?? "";
+        form.DashtItemTitle = item?.Title ?? "";
+        if (item != null && nameWasLinked) form.Name = item.Title;
+    }
+
+    /// <summary>Another recipe already linked to this Dasht item, if any.</summary>
+    string UsedBy(DashtItem item) =>
+        recipes?.FirstOrDefault(r => r.Id != editId && r.DashtItemCode == item.Code) is { } other ? $"رسپی «{other.Name}» به این کالا وصل است" : "";
 
     async Task LoadRecipes()
     {
@@ -276,7 +302,8 @@ else
         form = new Recipe
         {
             Id=r.Id, Name=r.Name, Notes=r.Notes,
-            BakingLossPercent=r.BakingLossPercent, PieceWeightGrams=r.PieceWeightGrams
+            BakingLossPercent=r.BakingLossPercent, PieceWeightGrams=r.PieceWeightGrams,
+            DashtItemId=r.DashtItemId, DashtItemCode=r.DashtItemCode, DashtItemTitle=r.DashtItemTitle
         };
         mainIngredients    = r.Ingredients.Where(i=>!i.IsTopping).Select(i=>new RecipeIngredient{MaterialId=i.MaterialId,Quantity=i.Quantity,UnitName=i.UnitName,IsTopping=false}).ToList();
         toppingIngredients = r.Ingredients.Where(i=>i.IsTopping ).Select(i=>new RecipeIngredient{MaterialId=i.MaterialId,Quantity=i.Quantity,UnitName=i.UnitName,IsTopping=true }).ToList();
@@ -304,6 +331,8 @@ else
     {
         errorMsg = "";
         if (string.IsNullOrWhiteSpace(form.Name)) { errorMsg = "نام رسپی الزامی است."; return; }
+        if (!string.IsNullOrEmpty(form.DashtItemCode) && recipes?.FirstOrDefault(r => r.Id != editId && r.DashtItemCode == form.DashtItemCode) is { } dup)
+        { errorMsg = $"کالای {form.DashtItemCode} قبلاً به رسپی «{dup.Name}» وصل شده است."; return; }
         var validMain = mainIngredients.Where(i=>i.MaterialId>0 && i.Quantity>0).ToList();
         if (!validMain.Any()) { errorMsg = "حداقل یک ماده اصلی با مقدار معتبر وارد کنید."; return; }
 

@@ -339,6 +339,9 @@ public partial class WarehouseService
         existing.BakingLossPercent = recipe.BakingLossPercent;
         existing.PieceWeightGrams  = recipe.PieceWeightGrams;
         existing.IsActive          = recipe.IsActive;
+        existing.DashtItemId       = recipe.DashtItemId;
+        existing.DashtItemCode     = recipe.DashtItemCode;
+        existing.DashtItemTitle    = recipe.DashtItemTitle;
         db.RecipeIngredients.RemoveRange(existing.Ingredients);
         foreach (var ing in recipe.Ingredients) { ing.Id = 0; ing.RecipeId = existing.Id; }
         existing.Ingredients = recipe.Ingredients;

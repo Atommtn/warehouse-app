@@ -57,6 +57,8 @@ public class AppDbContext : DbContext
         m.Entity<StockWithdrawal>().Property(x => x.Quantity).HasColumnType("decimal(28,10)");
         m.Entity<Recipe>().Property(x => x.BakingLossPercent).HasColumnType("decimal(5,2)");
         m.Entity<Recipe>().Property(x => x.PieceWeightGrams).HasColumnType("decimal(10,2)");
+        m.Entity<Recipe>().Property(x => x.DashtItemCode).HasMaxLength(50);
+        m.Entity<Recipe>().Property(x => x.DashtItemTitle).HasMaxLength(300);
         m.Entity<RecipeIngredient>().Property(x => x.Quantity).HasColumnType("decimal(18,3)");
         m.Entity<Warehouse>().HasIndex(x => x.Code).IsUnique();
         m.Entity<WarehouseStock>().HasIndex(x => new { x.WarehouseId, x.MaterialId }).IsUnique();

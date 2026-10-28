@@ -159,6 +159,13 @@ IF COL_LENGTH('Materials','StockUnitName') IS NULL ALTER TABLE [Materials] ADD [
 IF COL_LENGTH('MaterialUnitConversions','PerStockUnit') IS NULL ALTER TABLE [MaterialUnitConversions] ADD [PerStockUnit] decimal(28,10) NOT NULL CONSTRAINT [DF_MaterialUnitConversions_PerStockUnit] DEFAULT 1;
 IF COL_LENGTH('MaterialUnitConversions','IsApproximate') IS NULL ALTER TABLE [MaterialUnitConversions] ADD [IsApproximate] bit NOT NULL CONSTRAINT [DF_MaterialUnitConversions_IsApproximate] DEFAULT 0;
 IF COL_LENGTH('StockEntries','TotalPrice') IS NULL ALTER TABLE [StockEntries] ADD [TotalPrice] decimal(18,2) NOT NULL CONSTRAINT [DF_StockEntries_TotalPrice] DEFAULT 0;
+-- Link a recipe to the Dasht (Sepidar POS) item it makes.
+IF COL_LENGTH('Recipes','DashtItemId') IS NULL
+BEGIN
+ ALTER TABLE [Recipes] ADD [DashtItemId] int NULL;
+ ALTER TABLE [Recipes] ADD [DashtItemCode] nvarchar(50) NOT NULL CONSTRAINT [DF_Recipes_DashtItemCode] DEFAULT N'';
+ ALTER TABLE [Recipes] ADD [DashtItemTitle] nvarchar(300) NOT NULL CONSTRAINT [DF_Recipes_DashtItemTitle] DEFAULT N'';
+END;
 IF OBJECT_ID(N'[AppSettings]',N'U') IS NULL CREATE TABLE [AppSettings]([Key] nvarchar(100) NOT NULL CONSTRAINT [PK_AppSettings] PRIMARY KEY,[Value] nvarchar(max) NOT NULL);
 IF OBJECT_ID(N'[SmsLogs]',N'U') IS NULL CREATE TABLE [SmsLogs]([Id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_SmsLogs] PRIMARY KEY,[SentAt] datetime2 NOT NULL,[Kind] nvarchar(50) NOT NULL,[Recipient] nvarchar(50) NOT NULL,[Message] nvarchar(max) NOT NULL,[Success] bit NOT NULL,[Response] nvarchar(max) NOT NULL);
 IF COL_LENGTH('SmsLogs','MessageId') IS NULL

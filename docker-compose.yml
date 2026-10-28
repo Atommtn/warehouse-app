@@ -13,6 +13,9 @@ services:
       - Sms__Password=${SMS_PASSWORD:-}
       - Sms__ApiCode=${API_CODE:-}
       - Sms__Source=${SMS_SOURCE:-}
+      # لیست کالاهای دشت برای وصل کردن رسپی‌ها (وب‌هوک فقط‌خواندنی n8n)
+      - DashtItems__Url=${DASHT_ITEMS_URL:-}
+      - DashtItems__ApiKey=${DASHT_ITEMS_KEY:-}
     ports:
       - "${APP_PORT:-9095}:9095"
     networks:

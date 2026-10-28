@@ -1,0 +1,65 @@
+@* Type-to-search picker over Dasht (Sepidar POS) items; same matching rules and keys as MaterialPicker. *@
+@using WarehouseApp.Services
+<div class="picker" @onfocusout="Close">
+    <input class="form-input" value="@Text" placeholder="@Placeholder" disabled="@Disabled" autocomplete="off"
+           @oninput="OnInput" @onfocus="Open" @onkeydown="OnKey" />
+    @if (!string.IsNullOrEmpty(SelectedCode) && !open && !Disabled)
+    {
+        <button type="button" class="picker-clear" title="جدا کردن از کالای دشت" @onclick="Clear">✕</button>
+    }
+    @if (open && !Disabled)
+    {
+        <div class="picker-list">
+            @if (!matches.Any()) { <div class="picker-empty">کالایی پیدا نشد</div> }
+            @for (var i = 0; i < matches.Count; i++)
+            {
+                var m = matches[i]; var index = i;
+                <div class="picker-item @(index == active ? "active" : "") @(m.Code == SelectedCode ? "selected" : "")" @onmousedown="() => Pick(m)" @onmousedown:preventDefault>
+                    <span><code>@m.Code</code> @m.Title</span>
+                    <small>@(Used != null && Used(m) is { Length: > 0 } u ? "⚠️ " + u : m.GroupTitle)</small>
+                </div>
+            }
+            @if (total > matches.Count) { <div class="picker-empty">@(total - matches.Count) کالای دیگر؛ دقیق‌تر جستجو کنید</div> }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public IEnumerable<DashtItem> Items { get; set; } = Array.Empty<DashtItem>();
+    [Parameter] public string SelectedCode { get; set; } = "";
+    [Parameter] public string SelectedTitle { get; set; } = "";
+    [Parameter] public EventCallback<DashtItem?> Picked { get; set; }
+    /// <summary>Returns a note (e.g. the name of another recipe already linked) to show next to an item.</summary>
+    [Parameter] public Func<DashtItem, string>? Used { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "🔍 نام یا کد کالا در دشت را بنویسید...";
+    [Parameter] public bool Disabled { get; set; }
+
+    const int Limit = 30;
+    string query = ""; bool open; int active; int total; List<DashtItem> matches = new();
+
+    string Text => open ? query : !string.IsNullOrEmpty(SelectedCode) ? $"{SelectedCode} — {SelectedTitle}" : query;
+
+    void Filter()
+    {
+        var found = Items.Where(m => TextSearch.Matches(query, m.Title, m.Code))
+            .OrderBy(m => string.IsNullOrWhiteSpace(query) || TextSearch.Normalize(m.Code).StartsWith(TextSearch.Normalize(query)) ? 0 : 1)
+            .ThenBy(m => m.Code).ToList();
+        total = found.Count; matches = found.Take(Limit).ToList(); active = Math.Clamp(active, 0, Math.Max(0, matches.Count - 1));
+    }
+    void Open() { open = true; query = ""; active = 0; Filter(); }
+    void Close() { open = false; query = ""; }
+    void OnInput(ChangeEventArgs e) { query = e.Value?.ToString() ?? ""; open = true; active = 0; Filter(); }
+    async Task Pick(DashtItem m) { open = false; query = ""; await Picked.InvokeAsync(m); }
+    async Task Clear() { query = ""; await Picked.InvokeAsync(null); }
+    async Task OnKey(KeyboardEventArgs e)
+    {
+        if (!open && e.Key is "ArrowDown" or "Enter") { Open(); return; }
+        switch (e.Key)
+        {
+            case "ArrowDown": active = Math.Min(active + 1, matches.Count - 1); break;
+            case "ArrowUp": active = Math.Max(active - 1, 0); break;
+            case "Enter": if (matches.Count > 0) await Pick(matches[active]); break;
+            case "Escape": Close(); break;
+        }
+    }
+}
